@@ -1,6 +1,6 @@
 package cs4k.prototype.services
 
-import cs4k.prototype.broker.ListenerV1
+import cs4k.prototype.broker.Listener
 import cs4k.prototype.domain.Game
 import cs4k.prototype.repository.TicTacToeRepository
 import org.springframework.stereotype.Component
@@ -12,7 +12,7 @@ class TicTacToeService(val ticTacToeRepository: TicTacToeRepository) {
      * Start a new game or join an existing one
      * @param player the player that wants to start a game
      */
-    fun start(player: String): ListenerV1 {
+    fun start(player: String): Listener {
         val otherPlayerRegister = ticTacToeRepository.getOtherPlayer(player)
         return if (otherPlayerRegister == null) {
             val game = Game(xPlayer = player)

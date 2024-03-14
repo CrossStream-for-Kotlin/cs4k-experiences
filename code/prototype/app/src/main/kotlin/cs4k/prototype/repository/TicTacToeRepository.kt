@@ -2,8 +2,8 @@ package cs4k.prototype.repository
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
-import cs4k.prototype.broker.ListenerV1
-import cs4k.prototype.broker.NotifierV1
+import cs4k.prototype.broker.Listener
+import cs4k.prototype.broker.Notifier
 import cs4k.prototype.domain.Game
 import cs4k.prototype.domain.GameError
 import cs4k.prototype.domain.GameInfo
@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit
 
 @Component
 class TicTacToeRepository(
-    val notifier: NotifierV1
+    val notifier: Notifier
 ) {
 
     init {
@@ -64,7 +64,7 @@ class TicTacToeRepository(
      * @param game the game to be played
      * @param player the player that is waiting
      */
-    fun registerWaiting(game: Game, player: String): ListenerV1 {
+    fun registerWaiting(game: Game, player: String): Listener {
         val gameId = createGame(game)
         standby(player, gameId)
         return listenAndInitialNotify(gameId, game)
@@ -113,7 +113,7 @@ class TicTacToeRepository(
      * @param game the game to be played
      * @param gameId the id of the game
      */
-    fun startGame(game: Game, gameId: Int): ListenerV1 {
+    fun startGame(game: Game, gameId: Int): Listener {
         stopWaiting(gameId)
         updateGame(gameId, game)
         return listenAndInitialNotify(gameId, game)
@@ -180,8 +180,8 @@ class TicTacToeRepository(
      * @param gameId the id of the game
      * @param game the game to be played
      */
-    private fun listenAndInitialNotify(gameId: Int, game: Game): ListenerV1 {
-        val listener = ListenerV1(
+    private fun listenAndInitialNotify(gameId: Int, game: Game): Listener {
+        val listener = Listener(
             group = "gameId$gameId",
             sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(5))
         )

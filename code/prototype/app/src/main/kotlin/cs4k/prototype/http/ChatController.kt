@@ -1,6 +1,6 @@
 package cs4k.prototype.http
 
-import cs4k.prototype.services.ChatServiceV1
+import cs4k.prototype.services.ChatService
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -10,7 +10,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 
 @RestController
 class ChatController(
-    private val chatService: ChatServiceV1
+    private val chatService: ChatService
 ) {
 
     @GetMapping(Uris.Chat.LISTEN)
