@@ -32,8 +32,3 @@ sealed interface Event {
         }
     }
 }
-
-class Listener(
-    val group: String,
-    val sseEmitter: SseEmitter
-)

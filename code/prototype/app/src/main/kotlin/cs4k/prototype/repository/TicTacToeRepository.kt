@@ -182,7 +182,7 @@ class TicTacToeRepository(
      */
     private fun listenAndInitialNotify(gameId: Int, game: Game): Listener {
         val listener = Listener(
-            group = "gameId$gameId",
+            channel = "gameId$gameId",
             sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(5))
         )
         notifier.listen(listener)

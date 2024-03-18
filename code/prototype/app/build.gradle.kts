@@ -20,19 +20,23 @@ repositories {
 }
 
 dependencies {
+    // For Spring
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
 
-    // for coroutines
+    // For JDBI
+    implementation("org.jdbi:jdbi3-core:3.37.1")
+    implementation("org.jdbi:jdbi3-kotlin:3.37.1")
+    implementation("org.jdbi:jdbi3-postgres:3.37.1")
+    implementation("org.postgresql:postgresql:42.7.0")
+
+    // For coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
 
-    // for JDBC
-    implementation("org.postgresql:postgresql:42.7.1")
-
+    // For automated tests
     testImplementation("org.springframework.boot:spring-boot-starter-test")
-    // To use WebTestClient on tests
-    testImplementation("org.springframework.boot:spring-boot-starter-webflux")
+    testImplementation("org.springframework.boot:spring-boot-starter-webflux")  // To use WebTestClient on tests
     testImplementation(kotlin("test"))
 }
 

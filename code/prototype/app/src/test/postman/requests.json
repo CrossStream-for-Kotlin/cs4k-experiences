@@ -1,0 +1,188 @@
+{
+	"info": {
+		"_postman_id": "53e0277d-1f74-4f59-a96e-74bce17f8ef3",
+		"name": "CS$K",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "24269912"
+	},
+	"item": [
+		{
+			"name": "Prototype",
+			"item": [
+				{
+					"name": "Chat",
+					"item": [
+						{
+							"name": "Listen",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "http://localhost:8080/api/chat/listen",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "8080",
+									"path": [
+										"api",
+										"chat",
+										"listen"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Listen Group",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "http://localhost:8080/api/chat/listen/group",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "8080",
+									"path": [
+										"api",
+										"chat",
+										"listen",
+										"group"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Send",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "hello\r\n",
+									"options": {
+										"raw": {
+											"language": "text"
+										}
+									}
+								},
+								"url": {
+									"raw": "http://localhost:8080/api/chat/send",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "8080",
+									"path": [
+										"api",
+										"chat",
+										"send"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Send To Group",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "hello",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "http://localhost:8080/api/chat/send/group",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "8080",
+									"path": [
+										"api",
+										"chat",
+										"send",
+										"group"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "TicTacToe",
+					"item": [
+						{
+							"name": "Start",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n    \"player\": \"xpto\"\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "http://localhost:8080/api/game",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "8080",
+									"path": [
+										"api",
+										"game"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Play",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n    \"player\": \"xpto\",\r\n    \"row\": 0,\r\n    \"column\": 0\r\n}\r\n",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "http://localhost:8080/api/game/1",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "8080",
+									"path": [
+										"api",
+										"game",
+										"1"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				}
+			]
+		}
+	]
+}

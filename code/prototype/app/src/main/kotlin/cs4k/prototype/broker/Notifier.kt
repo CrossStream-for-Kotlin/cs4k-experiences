@@ -66,25 +66,30 @@ class Notifier {
         val pgConnection = connection.unwrap(PGConnection::class.java)
         try {
             while (!connection.isClosed) {
-                val newNotifications = pgConnection.getNotifications(0)
-                logger.info("listen channel {} pid {} ", listener.group, pgConnection.backendPID)
-                newNotifications.forEach { notification ->
-                    val splitPayload = notification.parameter.split("||")
-                    sendMessage(
-                        sseEmitter = listener.sseEmitter,
-                        name = listener.group,
-                        id = splitPayload[0].toLong(),
-                        data = splitPayload[1]
-                    )
-                    if (splitPayload.contains("done")) {
-                        listener.sseEmitter.complete()
-                        unListen(connection, listener.group)
-                        return
+                val newNotifications = pgConnection.notifications
+                logger.info("listen channel {} pid {} ", listener.channel, pgConnection.backendPID)
+                if (newNotifications.isNotEmpty()) {
+                    newNotifications.forEach { notification ->
+                        val splitPayload = notification.parameter.split("||")
+                        sendMessage(
+                            sseEmitter = listener.sseEmitter,
+                            name = listener.channel,
+                            id = splitPayload[0].toLong(),
+                            data = splitPayload[1]
+                        )
+                        if (splitPayload.contains("done")) {
+                            listener.sseEmitter.complete()
+                            unListen(connection, listener.channel)
+                            return
+                        }
                     }
+                } else {
+                    sendKeepAlive(listener.sseEmitter)
                 }
+                delay(2000)
             }
         } catch (ex: IOException) {
-            logger.info("sseEmitter closed channel {} pid {}", listener.group, pgConnection.backendPID)
+            logger.info("sseEmitter closed channel {} pid {}", listener.channel, pgConnection.backendPID)
         }
     }
 
@@ -93,15 +98,14 @@ class Notifier {
      * @param listener the listener to listen the "channel".
      */
     fun listen(listener: Listener) {
-        logger.info("new listener channel {}", listener.group)
+        logger.info("new listener channel {}", listener.channel)
 
         // Open a JDBC connection.
         val connection = createConnection()
 
         // Listen a "channel".
         connection.prepareStatement("LISTEN ?;").use {
-            it.setString(1, listener.group)
-            it.execute()
+            it.setString(1, listener.channel)
         }
 
         // Unwrap connection to PGConnection, in this case just for logging.
@@ -109,16 +113,16 @@ class Notifier {
 
         // On sse completion ...
         listener.sseEmitter.onCompletion {
-            logger.info("on sse completion: channel = {}, pid = {}", listener.group, pgConnection.backendPID)
+            logger.info("on sse completion: channel = {}, pid = {}", listener.channel, pgConnection.backendPID)
             // unListen "channel".
-            unListen(connection, listener.group)
+            unListen(connection, listener.channel)
         }
 
         // On sse error ...
         listener.sseEmitter.onError {
-            logger.info("on sse error: channel = {}, pid = {}", listener.group, pgConnection.backendPID)
+            logger.info("on sse error: channel = {}, pid = {}", listener.channel, pgConnection.backendPID)
             // unListen "channel".
-            unListen(connection, listener.group)
+            unListen(connection, listener.channel)
         }
 
         // Add to session queue to dedicate a coroutine to monitor "channel" and send messages, when notified, and keep alive to sse emitter.
@@ -140,7 +144,6 @@ class Notifier {
         createConnection().prepareStatement("NOTIFY ?, ? ;").use {
             it.setString(1, channel)
             it.setString(2, payload)
-            it.execute()
         }
     }
 
@@ -155,9 +158,7 @@ class Notifier {
         // Receive the connection used to monitor the "channel", unListen channel and close connection.
         connection.prepareStatement("UNLISTEN ?;").use {
             it.setString(1, channel)
-            it.execute()
         }
-
     }
 
     /**
@@ -220,8 +221,7 @@ class Notifier {
     }
 
     companion object {
-
-        val coroutineDispatcher = Executors.newFixedThreadPool(2).asCoroutineDispatcher()
+        private val coroutineDispatcher = Executors.newFixedThreadPool(2).asCoroutineDispatcher()
         private val logger = LoggerFactory.getLogger(Notifier::class.java)
     }
 }

@@ -17,7 +17,7 @@ class ChatService(val notifier: Notifier) {
      */
     fun newListener(group: String = generalGroup): Listener {
         val listener = Listener(
-            group = group,
+            channel = group,
             sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(5))
         )
         notifier.listen(listener)
