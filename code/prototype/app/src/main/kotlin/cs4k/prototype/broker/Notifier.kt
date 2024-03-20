@@ -25,7 +25,8 @@ class Notifier {
         createAccumulatorTable()
     }
 
-    private class Session(val connection: Connection, val listener: Listener)
+    private val connection = createConnection()
+    private class Session(val listener: Listener)
 
     /**
      * Queue to store the sessions to be monitored.
@@ -36,37 +37,27 @@ class Notifier {
      * Thread to monitor "sessionQueue" and send messages, when notified, and keep alive to sse emitter.
      */
     private val acceptingThread = thread {
-        runBlocking {
-            acceptingLoop(this)
-        }
+       while (true) {
+           val session = sessionQueue.poll()
+           if (session != null) {
+               notify(session.listener)
+
+           }
+           Thread.sleep(2000)
+       }
     }
 
-    /**
-     * Monitor "sessionQueue" and send messages, when notified, and keep alive to sse emitter.
-     */
-    private suspend fun acceptingLoop(scope: CoroutineScope) {
-        while (true) {
-            val session = sessionQueue.poll()
-            if (session != null) {
-                scope.launch(coroutineDispatcher) {
-                    notify(session.connection, session.listener)
-                }
-            }
-            delay(2000)
-        }
-    }
 
     /**
      * Monitor "channel" and send messages, when notified, and keep alive to sse emitter.
-     * @param connection the connection used to monitor the "channel".
      * @param listener the listener to send messages and keep alive.
      */
-    private suspend fun notify(connection: Connection, listener: Listener) {
+    private fun notify(listener: Listener) {
         // Unwrap connection to PGConnection, mainly to monitor "channels" notifications.
         val pgConnection = connection.unwrap(PGConnection::class.java)
         try {
             while (!connection.isClosed) {
-                val newNotifications = pgConnection.notifications
+                val newNotifications = pgConnection.getNotifications(0)
                 logger.info("listen channel {} pid {} ", listener.channel, pgConnection.backendPID)
                 if (newNotifications.isNotEmpty()) {
                     newNotifications.forEach { notification ->
@@ -79,14 +70,14 @@ class Notifier {
                         )
                         if (splitPayload.contains("done")) {
                             listener.sseEmitter.complete()
-                            unListen(connection, listener.channel)
+                            unListen(listener.channel)
                             return
                         }
                     }
                 } else {
                     sendKeepAlive(listener.sseEmitter)
                 }
-                delay(2000)
+                Thread.sleep(2000)
             }
         } catch (ex: IOException) {
             logger.info("sseEmitter closed channel {} pid {}", listener.channel, pgConnection.backendPID)
@@ -100,8 +91,6 @@ class Notifier {
     fun listen(listener: Listener) {
         logger.info("new listener channel {}", listener.channel)
 
-        // Open a JDBC connection.
-        val connection = createConnection()
 
         // Listen a "channel".
         connection.prepareStatement("LISTEN ?;").use {
@@ -115,18 +104,18 @@ class Notifier {
         listener.sseEmitter.onCompletion {
             logger.info("on sse completion: channel = {}, pid = {}", listener.channel, pgConnection.backendPID)
             // unListen "channel".
-            unListen(connection, listener.channel)
+            unListen(listener.channel)
         }
 
         // On sse error ...
         listener.sseEmitter.onError {
             logger.info("on sse error: channel = {}, pid = {}", listener.channel, pgConnection.backendPID)
             // unListen "channel".
-            unListen(connection, listener.channel)
+            unListen(listener.channel)
         }
 
         // Add to session queue to dedicate a coroutine to monitor "channel" and send messages, when notified, and keep alive to sse emitter.
-        sessionQueue.add(Session(connection, listener))
+        sessionQueue.add(Session(listener))
     }
 
     /**
@@ -140,8 +129,8 @@ class Notifier {
         logger.info("send message [{}] on channel {}", message, channel)
         val id = getNextId(channel)
         val payload = if (complete) "$id||$message||done" else "$id||$message"
-        // Open a connection, send a notification and close connection.
-        createConnection().prepareStatement("NOTIFY ?, ? ;").use {
+        // Send a notification and close connection.
+       connection.prepareStatement("NOTIFY ?, ? ;").use {
             it.setString(1, channel)
             it.setString(2, payload)
         }
@@ -152,7 +141,7 @@ class Notifier {
      * @param connection the connection used to monitor the "channel".
      * @param channel the "channel" to unListen.
      */
-    private fun unListen(connection: Connection, channel: String) {
+    private fun unListen(channel: String) {
         logger.info("remove listener channel {}", channel)
 
         // Receive the connection used to monitor the "channel", unListen channel and close connection.
@@ -197,7 +186,7 @@ class Notifier {
      * Get the next id of a "channel".
      */
     private fun getNextId(channel: String): Long {
-        createConnection().use { connection ->
+        connection.use { connection ->
             val stm = connection.prepareStatement("select id from accumulator where channel = ?;")
             stm.setString(1, channel)
             val rs = stm.executeQuery()
