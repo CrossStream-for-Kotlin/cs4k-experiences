@@ -1,10 +1,6 @@
 package cs4k.prototype.broker
 
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import org.postgresql.PGConnection
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -26,6 +22,8 @@ class Notifier {
     }
 
     private val connection = createConnection()
+    private val channel = "shareChannel"
+
     private class Session(val listener: Listener)
 
     /**
@@ -33,54 +31,50 @@ class Notifier {
      */
     private val sessionQueue = LinkedBlockingQueue<Session>(16)
 
+
     /**
      * Thread to monitor "sessionQueue" and send messages, when notified, and keep alive to sse emitter.
      */
     private val acceptingThread = thread {
-       while (true) {
-           val session = sessionQueue.poll()
-           if (session != null) {
-               notify(session.listener)
-
-           }
-           Thread.sleep(2000)
-       }
+        createConnection().createStatement().use {
+            it.execute("LISTEN ${channel};")
+        }
+        waitForNotification()
     }
 
 
     /**
-     * Monitor "channel" and send messages, when notified, and keep alive to sse emitter.
-     * @param listener the listener to send messages and keep alive.
+     * Monitor "channel" and send messages, when notified
      */
-    private fun notify(listener: Listener) {
+    private fun waitForNotification() {
         // Unwrap connection to PGConnection, mainly to monitor "channels" notifications.
         val pgConnection = connection.unwrap(PGConnection::class.java)
         try {
             while (!connection.isClosed) {
-                val newNotifications = pgConnection.getNotifications(0)
-                logger.info("listen channel {} pid {} ", listener.channel, pgConnection.backendPID)
+                val newNotifications = pgConnection.notifications
+                //logger.info("listen channel {} pid {} ", channel, pgConnection.backendPID)
                 if (newNotifications.isNotEmpty()) {
                     newNotifications.forEach { notification ->
                         val splitPayload = notification.parameter.split("||")
-                        sendMessage(
-                            sseEmitter = listener.sseEmitter,
-                            name = listener.channel,
-                            id = splitPayload[0].toLong(),
-                            data = splitPayload[1]
-                        )
-                        if (splitPayload.contains("done")) {
-                            listener.sseEmitter.complete()
-                            unListen(listener.channel)
-                            return
-                        }
+                        val topicReceived = splitPayload[0]
+                        //TOPIC||ID||MESSAGE
+                        sessionQueue.filter { it.listener.topic == topicReceived }
+                            .forEach { session ->
+                                session.listener.callback(
+                                    Event2(
+                                        topicReceived,
+                                        splitPayload[1].toLong(),
+                                        splitPayload[2]
+                                    ), splitPayload[3] == ("done")
+                                )
+                            }
                     }
-                } else {
-                    sendKeepAlive(listener.sseEmitter)
+
                 }
                 Thread.sleep(2000)
             }
         } catch (ex: IOException) {
-            logger.info("sseEmitter closed channel {} pid {}", listener.channel, pgConnection.backendPID)
+            logger.info("sseEmitter closed channel {} pid {}", channel, pgConnection.backendPID)
         }
     }
 
@@ -89,30 +83,7 @@ class Notifier {
      * @param listener the listener to listen the "channel".
      */
     fun listen(listener: Listener) {
-        logger.info("new listener channel {}", listener.channel)
-
-
-        // Listen a "channel".
-        connection.prepareStatement("LISTEN ?;").use {
-            it.setString(1, listener.channel)
-        }
-
-        // Unwrap connection to PGConnection, in this case just for logging.
-        val pgConnection = connection.unwrap(PGConnection::class.java)
-
-        // On sse completion ...
-        listener.sseEmitter.onCompletion {
-            logger.info("on sse completion: channel = {}, pid = {}", listener.channel, pgConnection.backendPID)
-            // unListen "channel".
-            unListen(listener.channel)
-        }
-
-        // On sse error ...
-        listener.sseEmitter.onError {
-            logger.info("on sse error: channel = {}, pid = {}", listener.channel, pgConnection.backendPID)
-            // unListen "channel".
-            unListen(listener.channel)
-        }
+        logger.info("new listener topic {}", listener.topic)
 
         // Add to session queue to dedicate a coroutine to monitor "channel" and send messages, when notified, and keep alive to sse emitter.
         sessionQueue.add(Session(listener))
@@ -120,25 +91,23 @@ class Notifier {
 
     /**
      * Send a notification to "channel".
-     * If "complete" is true, the sse emitter will be completed after sending the message. And afterwards, the listener will be removed.
-     * @param channel the "channel" to send the notification.
+     * @param topic the topic to send.
+     * @param id the id of the message.
      * @param message the message to send.
-     * @param complete if true, the sse emitter will be completed after sending the message.
+     * @param complete if the message is complete.
      */
-    fun send(channel: String, message: String, complete: Boolean = false) {
-        logger.info("send message [{}] on channel {}", message, channel)
-        val id = getNextId(channel)
-        val payload = if (complete) "$id||$message||done" else "$id||$message"
+    fun send(topic: String, id: Long, message: String, complete: Boolean = false) {
+        logger.info("From topic [{}] send message [{}] on channel {}", topic, message, channel)
+        val payload = if (complete) "$topic||$id||$message||done" else "$topic||$id||$message"
         // Send a notification and close connection.
-       connection.prepareStatement("NOTIFY ?, ? ;").use {
-            it.setString(1, channel)
-            it.setString(2, payload)
+        val stm = createConnection().prepareStatement("NOTIFY shareChannel, ? ;").use {
+            it.setString(1, payload)
+            it.executeQuery()
         }
     }
 
     /**
      * UnListen a "channel".
-     * @param connection the connection used to monitor the "channel".
      * @param channel the "channel" to unListen.
      */
     private fun unListen(channel: String) {
@@ -151,15 +120,18 @@ class Notifier {
     }
 
     /**
-     * Send a message to a sse emitter.
-     * @param sseEmitter the sse emitter to send the message.
-     * @param id the id of the message.
-     * @param name the name of the message.
-     * @param data the data of the message.
+     * Subscribe to a topic.
      */
-    private fun sendMessage(sseEmitter: SseEmitter, id: Long, name: String, data: String) {
-        logger.info("send message")
-        Event.Message(name, id, data).writeTo(sseEmitter)
+    fun subscribe(topic: String, callback: (Event2, toComplete: Boolean) -> Unit) {
+        listen(Listener(topic, callback))
+    }
+
+    /**
+     * Publish a message to a topic.
+     */
+    fun publish(topic: String, message: String) {
+        val id = test(topic, message)
+        send(topic, id, message)
     }
 
     /**
@@ -177,34 +149,37 @@ class Notifier {
     private fun createAccumulatorTable() {
         createConnection().use {
             it.createStatement().execute(
-                "create table if not exists accumulator (channel varchar(255), id integer);"
+                "create table if not exists accumulator (topic varchar(255), id integer, message varchar(255));"
             )
         }
     }
 
     /**
-     * Get the next id of a "channel".
+     * Get the next id of a "topic".
      */
-    private fun getNextId(channel: String): Long {
-        connection.use { connection ->
-            val stm = connection.prepareStatement("select id from accumulator where channel = ?;")
-            stm.setString(1, channel)
+    //TODO: Transatction level isolation
+    private fun test(topic: String, message: String): Long {
+        val c = createConnection()
+        val stm = c.prepareStatement("select id from accumulator where topic = ?;").use { stm ->
+            stm.setString(1, topic)
             val rs = stm.executeQuery()
-
-            return if (rs.next()) {
-                val stmUpdate = connection.prepareStatement(
-                    "update accumulator set id = id + 1 where channel = ?;"
-                )
-                stmUpdate.setString(1, channel)
-                stmUpdate.executeUpdate()
-                rs.getLong("id")
+            if (rs.next()) {
+                val stmUpdate = c.prepareStatement(
+                    "update accumulator set id = id + 1 , message = ? where topic = ?;"
+                ).use { stmUpdate ->
+                    stmUpdate.setString(1, message)
+                    stmUpdate.setString(2, topic)
+                    stmUpdate.executeUpdate()
+                    return rs.getLong("id")
+                }
             } else {
-                val stmInsert = connection.prepareStatement(
-                    "insert into accumulator (channel, id) values (?, 1);"
+                val stmInsert = c.prepareStatement(
+                    "insert into accumulator (topic, id, message) values (?, 1, ?);"
                 )
-                stmInsert.setString(1, channel)
+                stmInsert.setString(1, topic)
+                stmInsert.setString(2, message)
                 stmInsert.executeUpdate()
-                0
+                return 0
             }
         }
     }

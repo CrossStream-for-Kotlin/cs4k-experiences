@@ -4,6 +4,7 @@ import cs4k.prototype.broker.Listener
 import cs4k.prototype.domain.Game
 import cs4k.prototype.repository.TicTacToeRepository
 import org.springframework.stereotype.Component
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 
 @Component
 class TicTacToeService(val ticTacToeRepository: TicTacToeRepository) {
@@ -12,7 +13,7 @@ class TicTacToeService(val ticTacToeRepository: TicTacToeRepository) {
      * Start a new game or join an existing one
      * @param player the player that wants to start a game
      */
-    fun start(player: String): Listener {
+    fun start(player: String): SseEmitter {
         val otherPlayerRegister = ticTacToeRepository.getOtherPlayer(player)
         return if (otherPlayerRegister == null) {
             val game = Game(xPlayer = player)

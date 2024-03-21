@@ -14,14 +14,26 @@ class ChatService(val notifier: Notifier) {
     /**
      * Join a chat group
      * @param group the name of the group
+     *
      */
-    fun newListener(group: String = generalGroup): Listener {
-        val listener = Listener(
-            channel = group,
-            sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(5))
+    fun newListener(group: String = generalGroup): SseEmitter {
+        val emitter = SseEmitter(TimeUnit.MINUTES.toMillis(5))
+        notifier.subscribe(
+            topic = group,
+            callback = { event, toComplete ->
+
+                val sseEmitterEvent = SseEmitter.event()
+                    .name(event.topic)
+                    .id(event.message)
+                    .data("event: ${event.topic} - id: ${event.id} - data: ${event.message}")
+
+                emitter.send(sseEmitterEvent)
+                if (toComplete) {
+                    emitter.complete()
+                }
+            }
         )
-        notifier.listen(listener)
-        return listener
+        return emitter
     }
 
     /**
@@ -30,6 +42,9 @@ class ChatService(val notifier: Notifier) {
      * @param group the name of the group
      */
     fun sendMessage(msg: String, group: String = generalGroup) {
-        notifier.send(group, msg)
+        notifier.publish(
+            topic = group,
+            message = msg
+        )
     }
 }

@@ -64,7 +64,7 @@ class TicTacToeRepository(
      * @param game the game to be played
      * @param player the player that is waiting
      */
-    fun registerWaiting(game: Game, player: String): Listener {
+    fun registerWaiting(game: Game, player: String): SseEmitter {
         val gameId = createGame(game)
         standby(player, gameId)
         return listenAndInitialNotify(gameId, game)
@@ -113,7 +113,7 @@ class TicTacToeRepository(
      * @param game the game to be played
      * @param gameId the id of the game
      */
-    fun startGame(game: Game, gameId: Int): Listener {
+    fun startGame(game: Game, gameId: Int): SseEmitter {
         stopWaiting(gameId)
         updateGame(gameId, game)
         return listenAndInitialNotify(gameId, game)
@@ -180,14 +180,23 @@ class TicTacToeRepository(
      * @param gameId the id of the game
      * @param game the game to be played
      */
-    private fun listenAndInitialNotify(gameId: Int, game: Game): Listener {
-        val listener = Listener(
-            channel = "gameId$gameId",
-            sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(5))
-        )
-        notifier.listen(listener)
+    private fun listenAndInitialNotify(gameId: Int, game: Game): SseEmitter {
+        val emitter = SseEmitter(TimeUnit.MINUTES.toMillis(5))
+
+        notifier.subscribe(gameId.toString()) { event, toComplete ->
+            val sseEmitterEvent = SseEmitter.event()
+                .name(event.topic)
+                .id(event.message)
+                .data("event: ${event.topic} - id: ${event.id} - data: ${event.message}")
+
+            emitter.send(sseEmitterEvent)
+            if (toComplete) {
+                emitter.complete()
+            }
+        }
         notifyGameState(gameId, game)
-        return listener
+
+        return emitter
     }
 
     /**
@@ -197,7 +206,7 @@ class TicTacToeRepository(
      */
     private fun notifyGameState(gameId: Int, game: Game) {
         val gameInfo = GameInfo(gameId, game)
-        notifier.send("gameId$gameId", gameInfoObjectToJson(gameInfo), game.isOver())
+        notifier.publish("gameId$gameId", gameInfoObjectToJson(gameInfo))
     }
 
     companion object {

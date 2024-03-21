@@ -16,8 +16,8 @@ class TicTacToeController(
 
     @PostMapping(Uris.TicTacToe.START)
     fun start(@RequestBody startInputModel: StartInputModel): SseEmitter {
-        val listener = ticTacToeService.start(startInputModel.player)
-        return listener.sseEmitter
+        return  ticTacToeService.start(startInputModel.player)
+
     }
 
     @PostMapping(Uris.TicTacToe.PLAY)

@@ -15,14 +15,12 @@ class ChatController(
 
     @GetMapping(Uris.Chat.LISTEN)
     fun listen(): SseEmitter {
-        val listener = chatService.newListener()
-        return listener.sseEmitter
+        return chatService.newListener()
     }
 
     @GetMapping(Uris.Chat.LISTEN_GROUP)
     fun listenGroup(@PathVariable group: String): SseEmitter {
-        val listener = chatService.newListener(group)
-        return listener.sseEmitter
+        return chatService.newListener(group)
     }
 
     @PostMapping(Uris.Chat.SEND)
