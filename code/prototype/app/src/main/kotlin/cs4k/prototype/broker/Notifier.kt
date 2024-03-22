@@ -29,7 +29,6 @@ class Notifier {
     fun subscribe(topic: String, handler: (event: Event) -> Unit) {
         logger.info("new subscriber topic '{}'", topic)
         subscriberQueue.add(Subscriber(topic, handler))
-
         getLastEvent(topic)?.let { event -> handler(event) }
     }
 
