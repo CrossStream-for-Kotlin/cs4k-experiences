@@ -36,7 +36,7 @@ dependencies {
 
     // For automated tests
     testImplementation("org.springframework.boot:spring-boot-starter-test")
-    testImplementation("org.springframework.boot:spring-boot-starter-webflux")  // To use WebTestClient on tests
+    testImplementation("org.springframework.boot:spring-boot-starter-webflux") // To use WebTestClient on tests
     testImplementation(kotlin("test"))
 }
 

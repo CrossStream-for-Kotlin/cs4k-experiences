@@ -2,7 +2,6 @@ package cs4k.prototype.repository
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
-import cs4k.prototype.broker.Listener
 import cs4k.prototype.broker.Notifier
 import cs4k.prototype.domain.Game
 import cs4k.prototype.domain.GameError
@@ -32,7 +31,7 @@ class TicTacToeRepository(
             val stm = conn.createStatement()
             stm.execute(
                 "create table if not exists Games(id int generated always as identity primary key, board jsonb not null);" +
-                        "create table if not exists Waiting(player varchar(16) primary key, gameId int unique)"
+                    "create table if not exists Waiting(player varchar(16) primary key, gameId int unique)"
             )
         }
     }
@@ -45,7 +44,7 @@ class TicTacToeRepository(
     /**
      * Get the other player that is waiting for a game.
      * If there is no other player waiting, return null.
-     * @param player the player that is waiting
+     * @param player the player that is waiting.
      */
     fun getOtherPlayer(player: String): WaitingRegistry? {
         createConnection().use { conn ->
@@ -61,8 +60,8 @@ class TicTacToeRepository(
 
     /**
      * Register a player as waiting for a game.
-     * @param game the game to be played
-     * @param player the player that is waiting
+     * @param game the game to be played.
+     * @param player the player that is waiting.
      */
     fun registerWaiting(game: Game, player: String): SseEmitter {
         val gameId = createGame(game)
@@ -72,7 +71,7 @@ class TicTacToeRepository(
 
     /**
      * Create a new game in the database.
-     * @param game the game to be created
+     * @param game the game to be created.
      */
     private fun createGame(game: Game): Int {
         createConnection().use { conn ->
@@ -93,8 +92,8 @@ class TicTacToeRepository(
 
     /**
      * Register a player as waiting for a game.
-     * @param player the player that is waiting
-     * @param gameId the id of the game
+     * @param player the player that is waiting.
+     * @param gameId the id of the game.
      */
     private fun standby(player: String, gameId: Int) {
         createConnection().use { conn ->
@@ -110,8 +109,8 @@ class TicTacToeRepository(
 
     /**
      * Start a game with a player that is waiting.
-     * @param game the game to be played
-     * @param gameId the id of the game
+     * @param game the game to be played.
+     * @param gameId the id of the game.
      */
     fun startGame(game: Game, gameId: Int): SseEmitter {
         stopWaiting(gameId)
@@ -121,7 +120,7 @@ class TicTacToeRepository(
 
     /**
      * Stop a player from waiting for a game.
-     * @param gameId the id of the game
+     * @param gameId the id of the game.
      */
     private fun stopWaiting(gameId: Int) {
         createConnection().use { conn ->
@@ -135,7 +134,7 @@ class TicTacToeRepository(
 
     /**
      * Get a game by its id.
-     * @param id the id of the game
+     * @param id the id of the game.
      */
     fun getGame(id: Int): Game {
         createConnection().use { conn ->
@@ -150,8 +149,8 @@ class TicTacToeRepository(
 
     /**
      * Update a game in the database.
-     * @param id the id of the game
-     * @param game the game to be updated
+     * @param id the id of the game.
+     * @param game the game to be updated.
      */
     fun updateGame(id: Int, game: Game) {
         createConnection().use { conn ->
@@ -177,36 +176,40 @@ class TicTacToeRepository(
 
     /**
      * Listen for changes in the game state and notify the player.
-     * @param gameId the id of the game
-     * @param game the game to be played
+     * @param gameId the id of the game.
+     * @param game the game to be played.
      */
     private fun listenAndInitialNotify(gameId: Int, game: Game): SseEmitter {
-        val emitter = SseEmitter(TimeUnit.MINUTES.toMillis(5))
+        val sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(5))
 
-        notifier.subscribe(gameId.toString()) { event, toComplete ->
-            val sseEmitterEvent = SseEmitter.event()
-                .name(event.topic)
-                .id(event.message)
-                .data("event: ${event.topic} - id: ${event.id} - data: ${event.message}")
+        notifier.subscribe(
+            topic = gameId.toString(),
+            handler = { event ->
+                val sseEmitterEvent = SseEmitter.event()
+                    .name(event.topic)
+                    .id(event.id.toString())
+                    .data("event: ${event.topic} - id: ${event.id} - data: ${event.message}")
+                sseEmitter.send(sseEmitterEvent)
 
-            emitter.send(sseEmitterEvent)
-            if (toComplete) {
-                emitter.complete()
+                if (event.isLast) sseEmitter.complete()
             }
-        }
+        )
         notifyGameState(gameId, game)
 
-        return emitter
+        return sseEmitter
     }
 
     /**
      * Notify the player of the game state.
-     * @param gameId the id of the game
-     * @param game the game to be played
+     * @param gameId the id of the game.
+     * @param game the game to be played.
      */
     private fun notifyGameState(gameId: Int, game: Game) {
         val gameInfo = GameInfo(gameId, game)
-        notifier.publish("gameId$gameId", gameInfoObjectToJson(gameInfo))
+        notifier.publish(
+            topic = "gameId$gameId",
+            message = gameInfoObjectToJson(gameInfo)
+        )
     }
 
     companion object {

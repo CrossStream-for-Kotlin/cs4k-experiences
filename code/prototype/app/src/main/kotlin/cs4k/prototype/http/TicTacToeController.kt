@@ -16,8 +16,7 @@ class TicTacToeController(
 
     @PostMapping(Uris.TicTacToe.START)
     fun start(@RequestBody startInputModel: StartInputModel): SseEmitter {
-        return  ticTacToeService.start(startInputModel.player)
-
+        return ticTacToeService.start(startInputModel.player)
     }
 
     @PostMapping(Uris.TicTacToe.PLAY)
