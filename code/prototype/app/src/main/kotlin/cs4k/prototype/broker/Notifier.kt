@@ -1,6 +1,5 @@
 package cs4k.prototype.broker
 
-import kotlinx.coroutines.asCoroutineDispatcher
 import org.postgresql.PGConnection
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -9,7 +8,6 @@ import java.io.IOException
 import java.sql.Connection
 import java.sql.DriverManager
 import java.time.Instant
-import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import kotlin.concurrent.thread
 
@@ -22,7 +20,7 @@ class Notifier {
     }
 
     private val connection = createConnection()
-    private val channel = "shareChannel"
+    private val channel = "sharechannel"
 
     private class Session(val listener: Listener)
 
@@ -35,9 +33,9 @@ class Notifier {
     /**
      * Thread to monitor "sessionQueue" and send messages, when notified, and keep alive to sse emitter.
      */
-    private val acceptingThread = thread {
-        createConnection().createStatement().use {
-            it.execute("LISTEN ${channel};")
+    private val notifyingThread = thread {
+        connection.createStatement().use {
+            it.execute("LISTEN sharechannel;")
         }
         waitForNotification()
     }
@@ -51,13 +49,13 @@ class Notifier {
         val pgConnection = connection.unwrap(PGConnection::class.java)
         try {
             while (!connection.isClosed) {
-                val newNotifications = pgConnection.notifications
-                //logger.info("listen channel {} pid {} ", channel, pgConnection.backendPID)
+                val newNotifications = pgConnection.getNotifications(0)
+                logger.info("listen channel {} pid {} ", channel, pgConnection.backendPID)
                 if (newNotifications.isNotEmpty()) {
                     newNotifications.forEach { notification ->
                         val splitPayload = notification.parameter.split("||")
                         val topicReceived = splitPayload[0]
-                        //TOPIC||ID||MESSAGE
+                        //TOPIC||ID||MESSAGE[||done]
                         sessionQueue.filter { it.listener.topic == topicReceived }
                             .forEach { session ->
                                 session.listener.callback(
@@ -65,13 +63,12 @@ class Notifier {
                                         topicReceived,
                                         splitPayload[1].toLong(),
                                         splitPayload[2]
-                                    ), splitPayload[3] == ("done")
+                                    ), splitPayload.size > 3 && splitPayload[3] == ("done")
                                 )
                             }
                     }
 
                 }
-                Thread.sleep(2000)
             }
         } catch (ex: IOException) {
             logger.info("sseEmitter closed channel {} pid {}", channel, pgConnection.backendPID)
@@ -100,9 +97,13 @@ class Notifier {
         logger.info("From topic [{}] send message [{}] on channel {}", topic, message, channel)
         val payload = if (complete) "$topic||$id||$message||done" else "$topic||$id||$message"
         // Send a notification and close connection.
-        val stm = createConnection().prepareStatement("NOTIFY shareChannel, ? ;").use {
-            it.setString(1, payload)
-            it.executeQuery()
+        createConnection().use {
+            // select pg_notify is used because NOTIFY cannot be used in preparedStatement.
+            // query results are ignored, but notifications are still sent.
+            val stm = it.prepareStatement("select pg_notify(?, ?)")
+            stm.setString(1, channel)
+            stm.setString(2, payload)
+            stm.execute()
         }
     }
 
@@ -130,7 +131,7 @@ class Notifier {
      * Publish a message to a topic.
      */
     fun publish(topic: String, message: String) {
-        val id = test(topic, message)
+        val id = getEventIdAndUpdateHistory(topic, message)
         send(topic, id, message)
     }
 
@@ -155,37 +156,53 @@ class Notifier {
     }
 
     /**
-     * Get the next id of a "topic".
+     * Get the next id of a "topic", while updating the table of events
      */
     //TODO: Transatction level isolation
-    private fun test(topic: String, message: String): Long {
+    private fun getEventIdAndUpdateHistory(topic: String, message: String): Long {
         val c = createConnection()
-        val stm = c.prepareStatement("select id from accumulator where topic = ?;").use { stm ->
+        c.prepareStatement("select id from accumulator where topic = ?;").use { stm ->
             stm.setString(1, topic)
             val rs = stm.executeQuery()
             if (rs.next()) {
-                val stmUpdate = c.prepareStatement(
-                    "update accumulator set id = id + 1 , message = ? where topic = ?;"
-                ).use { stmUpdate ->
-                    stmUpdate.setString(1, message)
-                    stmUpdate.setString(2, topic)
-                    stmUpdate.executeUpdate()
-                    return rs.getLong("id")
-                }
+                val newEventId = rs.getLong("id") + 1
+                updateLastEvent(c, newEventId, message, topic)
+                return newEventId
             } else {
-                val stmInsert = c.prepareStatement(
-                    "insert into accumulator (topic, id, message) values (?, 1, ?);"
-                )
-                stmInsert.setString(1, topic)
-                stmInsert.setString(2, message)
-                stmInsert.executeUpdate()
+                insertFirstEventOfTopic(c, message, topic)
                 return 0
             }
         }
     }
 
+    /**
+     * Inserting event into the table containing the last event of each topic
+     */
+    private fun insertFirstEventOfTopic(c: Connection, message: String, topic: String) {
+        c.prepareStatement(
+            "insert into accumulator (topic, id, message) values (?, 0, ?);"
+        ).use {
+            it.setString(1, topic)
+            it.setString(2, message)
+            it.executeUpdate()
+        }
+    }
+
+    /**
+     * Updates the last event of topic
+     */
+    private fun updateLastEvent(c: Connection, id: Long, message: String, topic: String) {
+        c.prepareStatement(
+            "update accumulator set id = ? , message = ? where topic = ?;"
+        ).use { stmUpdate ->
+            stmUpdate.setLong(1, id)
+            stmUpdate.setString(2, message)
+            stmUpdate.setString(3, topic)
+            stmUpdate.executeUpdate()
+        }
+    }
+
     companion object {
-        private val coroutineDispatcher = Executors.newFixedThreadPool(2).asCoroutineDispatcher()
         private val logger = LoggerFactory.getLogger(Notifier::class.java)
     }
 }
