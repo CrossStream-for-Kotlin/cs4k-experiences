@@ -1,6 +1,5 @@
 package cs4k.prototype.services
 
-import cs4k.prototype.broker.Listener
 import cs4k.prototype.broker.Notifier
 import org.springframework.stereotype.Component
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
@@ -12,39 +11,35 @@ class ChatService(val notifier: Notifier) {
     private val generalGroup = "general"
 
     /**
-     * Join a chat group
-     * @param group the name of the group
-     *
+     * Join a chat group.
+     * @param group the optional name of the group.
      */
     fun newListener(group: String = generalGroup): SseEmitter {
-        val emitter = SseEmitter(TimeUnit.MINUTES.toMillis(5))
+        val sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(5))
         notifier.subscribe(
             topic = group,
-            callback = { event, toComplete ->
-
+            handler = { event ->
                 val sseEmitterEvent = SseEmitter.event()
                     .name(event.topic)
-                    .id(event.message)
+                    .id(event.id.toString())
                     .data("event: ${event.topic} - id: ${event.id} - data: ${event.message}")
+                sseEmitter.send(sseEmitterEvent)
 
-                emitter.send(sseEmitterEvent)
-                if (toComplete) {
-                    emitter.complete()
-                }
+                if (event.isLast) sseEmitter.complete()
             }
         )
-        return emitter
+        return sseEmitter
     }
 
     /**
-     * Send a message to a group
-     * @param msg message to send to the group
-     * @param group the name of the group
+     * Send a message to a group.
+     * @param message message to send to the group.
+     * @param group the optional name of the group.
      */
-    fun sendMessage(msg: String, group: String = generalGroup) {
+    fun sendMessage(message: String, group: String = generalGroup) {
         notifier.publish(
             topic = group,
-            message = msg
+            message = message
         )
     }
 }

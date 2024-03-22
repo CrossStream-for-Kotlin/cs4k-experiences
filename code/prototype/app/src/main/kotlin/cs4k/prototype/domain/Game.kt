@@ -34,9 +34,9 @@ data class Game(
     private fun hasWon(shape: Shape): Boolean {
         val shapePieces = board.filter { it.shape == shape }
         return wonInRow(shapePieces) ||
-                wonInColumn(shapePieces) ||
-                wonInSlash(shapePieces) ||
-                wonInBackSlash(shapePieces)
+            wonInColumn(shapePieces) ||
+            wonInSlash(shapePieces) ||
+            wonInBackSlash(shapePieces)
     }
 
     private fun isDraw() = board.count() == gameSize * gameSize

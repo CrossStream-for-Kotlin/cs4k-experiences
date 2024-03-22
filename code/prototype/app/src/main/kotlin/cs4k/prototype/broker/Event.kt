@@ -1,13 +1,13 @@
 package cs4k.prototype.broker
 
-import org.springframework.boot.autoconfigure.kafka.KafkaProperties.Retry.Topic
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
-
-data class Event2 (
+data class Event(
     val topic: String,
     val id: Long,
-    val message: String
+    val message: String,
+    val isLast: Boolean = false
 )
+
+/*
 sealed interface Event {
 
     fun writeTo(emitter: SseEmitter)
@@ -38,3 +38,4 @@ sealed interface Event {
         }
     }
 }
+*/
