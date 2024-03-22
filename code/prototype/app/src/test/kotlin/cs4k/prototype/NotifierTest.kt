@@ -1,6 +1,12 @@
 package cs4k.prototype
 
+import cs4k.prototype.broker.Event
 import cs4k.prototype.broker.Notifier
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.math.abs
+import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -91,4 +97,167 @@ class NotifierTest {
         assertEquals(message2, messages?.get(0))
     }
 
+    @Test
+    fun `new subscriber receives the last message in the topic`() {
+        // Arrange
+        val newTopic = newTopic()
+        val newMessage = newMessage()
+        notifier.publish(
+            topic = newTopic,
+            message = newMessage
+        )
+
+        // Act
+        notifier.subscribe(
+            topic = newTopic,
+            handler = { event ->
+                // Assert
+                assertEquals(newTopic, event.topic)
+                assertEquals(0, event.id)
+                assertEquals(newMessage, event.message)
+            }
+        )
+    }
+
+    @Test
+    fun `new subscribers receives the same last message in the topic`() {
+        // Arrange
+        val newTopic = newTopic()
+        val newMessage = newMessage()
+        notifier.publish(
+            topic = newTopic,
+            message = newMessage
+        )
+
+        // Act
+        repeat(NUMBER_OF_SUBSCRIBERS) {
+            notifier.subscribe(
+                topic = newTopic,
+                handler = { event ->
+                    // Assert
+                    assertEquals(newTopic, event.topic)
+                    assertEquals(0, event.id)
+                    assertEquals(newMessage, event.message)
+                }
+            )
+        }
+    }
+
+    @Test
+    fun `1 subscriber waiting for 1 message`() {
+        // Arrange
+        val topic = newTopic()
+        val message = newMessage()
+        notifier.subscribe(
+            topic = topic,
+            handler = { event ->
+                // Assert
+                assertEquals(topic, event.topic)
+                assertEquals(0, event.id)
+                assertEquals(message, event.message)
+            }
+        )
+
+        // Act
+        notifier.publish(topic, message)
+    }
+
+    @Test
+    fun `n subscribes waiting for 1 message`() {
+        // Arrange
+        val topic = newTopic()
+        val message = newMessage()
+
+        repeat(NUMBER_OF_SUBSCRIBERS) {
+            notifier.subscribe(
+                topic = topic,
+                handler = { event ->
+                    // Assert
+                    assertEquals(topic, event.topic)
+                    assertEquals(0, event.id)
+                    assertEquals(message, event.message)
+                }
+            )
+        }
+
+        // Act
+        notifier.publish(topic, message)
+    }
+
+    @Test
+    fun `1 subscriber receiving n messages`() {
+        // Arrange
+        val topic = newTopic()
+        val messagesToSend = List(NUMBER_OF_MESSAGES) { newMessage() }
+
+        val eventsReceived = ConcurrentLinkedQueue<Event>()
+        val latch = CountDownLatch(NUMBER_OF_MESSAGES)
+        notifier.subscribe(
+            topic = topic,
+            handler = { event ->
+                eventsReceived.add(event)
+                latch.countDown()
+            }
+        )
+
+        // Act
+        messagesToSend.forEach { message ->
+            notifier.publish(topic, message)
+        }
+
+        latch.await(10, TimeUnit.SECONDS)
+
+        // Assert
+        assertEquals(NUMBER_OF_MESSAGES, eventsReceived.size)
+        eventsReceived.forEachIndexed { idx, event ->
+            assertEquals(topic, event.topic)
+            assertEquals(idx.toLong(), event.id)
+            assertEquals(messagesToSend[idx], event.message)
+        }
+    }
+
+    @Test
+    fun `n subscribers receiving n messages`() {
+        // Arrange
+        val topic = newTopic()
+        val messagesToSend = List(NUMBER_OF_MESSAGES) { newMessage() }
+
+        val eventsReceived = ConcurrentLinkedQueue<Event>()
+        val latch = CountDownLatch(NUMBER_OF_SUBSCRIBERS * NUMBER_OF_MESSAGES)
+        repeat(NUMBER_OF_SUBSCRIBERS) {
+            notifier.subscribe(
+                topic = topic,
+                handler = { event ->
+                    eventsReceived.add(event)
+                    latch.countDown()
+                }
+            )
+        }
+
+        // Act
+        messagesToSend.forEach { message ->
+            notifier.publish(topic, message)
+        }
+
+        latch.await(10, TimeUnit.SECONDS)
+
+        // Assert
+        assertEquals(NUMBER_OF_SUBSCRIBERS * NUMBER_OF_MESSAGES, eventsReceived.size)
+        val eventsReceivedSet = eventsReceived.toSet()
+        eventsReceivedSet.forEachIndexed { idx, event ->
+            assertEquals(topic, event.topic)
+            assertEquals(idx.toLong(), event.id)
+            assertEquals(messagesToSend[idx], event.message)
+        }
+    }
+
+    companion object {
+        private val notifier = Notifier()
+
+        private const val NUMBER_OF_SUBSCRIBERS = 30
+        private const val NUMBER_OF_MESSAGES = 30
+
+        private fun newTopic() = "topic${abs(Random.nextLong())}"
+        private fun newMessage() = "message${abs(Random.nextLong())}"
+    }
 }

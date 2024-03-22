@@ -63,7 +63,7 @@ class Notifier {
         )
     }
 
-    fun notify(topic: String, message: String, isLastMessage: Boolean) {
+    private fun notify(topic: String, message: String, isLastMessage: Boolean) {
         val connection = createConnection()
 
         val id = getEventIdAndUpdateHistory(connection, topic, message)
@@ -86,9 +86,8 @@ class Notifier {
         connection.createStatement().use { it.execute("UNLISTEN $channel;") }
     }
 
-    // TODO("Transaction level")
     private fun getLastEvent(topic: String): Event? {
-        createConnection().prepareStatement("select id, message from notifier where topic = ?;").use { stm ->
+        createConnection().prepareStatement("select id, message from notifier where topic = ? for share;").use { stm ->
             stm.setString(1, topic)
             val rs = stm.executeQuery()
             return if (rs.next()) {
@@ -121,32 +120,26 @@ class Notifier {
 
     // TODO("Transaction level")
     private fun insertFirstEventOfTopic(connection: Connection, message: String, topic: String) {
-        connection.prepareStatement(
-            "insert into notifier (topic, id, message) values (?, 0, ?);"
-        ).use {
-            it.setString(1, topic)
-            it.setString(2, message)
-            it.executeUpdate()
+        connection.prepareStatement("insert into notifier (topic, id, message) values (?, 0, ?);").use { stm ->
+            stm.setString(1, topic)
+            stm.setString(2, message)
+            stm.executeUpdate()
         }
     }
 
     // TODO("Transaction level")
     private fun updateLastEvent(connection: Connection, id: Long, message: String, topic: String) {
-        connection.prepareStatement(
-            "update notifier set id = ? , message = ? where topic = ?;"
-        ).use { stmUpdate ->
-            stmUpdate.setLong(1, id)
-            stmUpdate.setString(2, message)
-            stmUpdate.setString(3, topic)
-            stmUpdate.executeUpdate()
+        connection.prepareStatement("update notifier set id = ? , message = ? where topic = ?;").use { stm ->
+            stm.setLong(1, id)
+            stm.setString(2, message)
+            stm.setString(3, topic)
+            stm.executeUpdate()
         }
     }
 
     private fun createNotifierTable() {
-        createConnection().use {
-            it.createStatement().execute(
-                "create table if not exists notifier (topic varchar(255), id integer, message varchar(255));"
-            )
+        connection.createStatement().use { stm ->
+            stm.execute("create table if not exists notifier (topic varchar(255), id integer, message varchar(255));")
         }
     }
 
