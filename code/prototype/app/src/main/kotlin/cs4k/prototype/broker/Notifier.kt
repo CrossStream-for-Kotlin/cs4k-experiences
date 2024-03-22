@@ -5,16 +5,15 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.sql.Connection
 import java.sql.DriverManager
-import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.concurrent.thread
 
 @Component
 class Notifier {
 
-    private val channel = "sharechannel"
+    private val channel = "share_channel"
     private val connection = createConnection()
-    private val subscriberQueue =
-        LinkedBlockingQueue<Subscriber>(100) // TODO: Automatically increase and decrease size.
+    private val subscriberQueue = ConcurrentLinkedQueue<Subscriber>()
 
     init {
         createNotifierTable()
@@ -32,10 +31,11 @@ class Notifier {
         getLastEvent(topic)?.let { event -> handler(event) }
     }
 
-    fun publish(topic: String, message: String) {
-        notify(topic, message)
+    fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
+        notify(topic, message, isLastMessage)
     }
 
+    // TODO("Remove from subscriberQueue")
     private fun waitForNotification() {
         val pgConnection = connection.unwrap(PGConnection::class.java)
 
@@ -53,8 +53,8 @@ class Notifier {
     }
 
     private fun createEvent(payload: String): Event {
-        val splitPayload = payload.split("||")
         // TOPIC||ID||MESSAGE||[done]
+        val splitPayload = payload.split("||")
         return Event(
             topic = splitPayload[0],
             id = splitPayload[1].toLong(),
@@ -63,11 +63,11 @@ class Notifier {
         )
     }
 
-    fun notify(topic: String, message: String, isLast: Boolean = false) {
+    fun notify(topic: String, message: String, isLastMessage: Boolean) {
         val connection = createConnection()
 
         val id = getEventIdAndUpdateHistory(connection, topic, message)
-        val payload = if (isLast) "$topic||$id||$message||done" else "$topic||$id||$message"
+        val payload = if (isLastMessage) "$topic||$id||$message||done" else "$topic||$id||$message"
         logger.info("notify topic '{}' [{}]", topic, payload)
 
         connection.use {
@@ -80,13 +80,13 @@ class Notifier {
         }
     }
 
-    // TODO: Call unListen.
+    // TODO("Call unListen")
     private fun unListen() {
         logger.info("unListen channel '{}'", channel)
         connection.createStatement().use { it.execute("UNLISTEN $channel;") }
     }
 
-    // TODO: Transaction level.
+    // TODO("Transaction level")
     private fun getLastEvent(topic: String): Event? {
         createConnection().prepareStatement("select id, message from notifier where topic = ?;").use { stm ->
             stm.setString(1, topic)
@@ -103,7 +103,7 @@ class Notifier {
         }
     }
 
-    // TODO: Transaction level.
+    // TODO("Transaction level")
     private fun getEventIdAndUpdateHistory(connection: Connection, topic: String, message: String): Long {
         connection.prepareStatement("select id from notifier where topic = ?;").use { stm ->
             stm.setString(1, topic)
@@ -119,7 +119,7 @@ class Notifier {
         }
     }
 
-    // TODO: Transaction level.
+    // TODO("Transaction level")
     private fun insertFirstEventOfTopic(connection: Connection, message: String, topic: String) {
         connection.prepareStatement(
             "insert into notifier (topic, id, message) values (?, 0, ?);"
@@ -130,7 +130,7 @@ class Notifier {
         }
     }
 
-    // TODO: Transaction level.
+    // TODO("Transaction level")
     private fun updateLastEvent(connection: Connection, id: Long, message: String, topic: String) {
         connection.prepareStatement(
             "update notifier set id = ? , message = ? where topic = ?;"
@@ -142,7 +142,6 @@ class Notifier {
         }
     }
 
-    // TODO: Transaction level.
     private fun createNotifierTable() {
         createConnection().use {
             it.createStatement().execute(
