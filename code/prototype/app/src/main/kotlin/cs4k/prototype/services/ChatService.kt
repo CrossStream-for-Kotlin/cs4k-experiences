@@ -16,7 +16,7 @@ class ChatService(val notifier: Notifier) {
      */
     fun newListener(group: String = generalGroup): SseEmitter {
         val sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(5))
-        notifier.subscribe(
+        val unsubscribeCallback = notifier.subscribe(
             topic = group,
             handler = { event ->
                 val sseEmitterEvent = SseEmitter.event()
@@ -28,6 +28,12 @@ class ChatService(val notifier: Notifier) {
                 if (event.isLast) sseEmitter.complete()
             }
         )
+        sseEmitter.onCompletion {
+            unsubscribeCallback()
+        }
+        sseEmitter.onError {
+            unsubscribeCallback()
+        }
         return sseEmitter
     }
 

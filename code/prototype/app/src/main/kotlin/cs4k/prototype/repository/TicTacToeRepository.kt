@@ -182,7 +182,7 @@ class TicTacToeRepository(
     private fun listenAndInitialNotify(gameId: Int, game: Game): SseEmitter {
         val sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(5))
 
-        notifier.subscribe(
+        val unsubscribeCallback = notifier.subscribe(
             topic = gameId.toString(),
             handler = { event ->
                 val sseEmitterEvent = SseEmitter.event()
@@ -194,6 +194,13 @@ class TicTacToeRepository(
                 if (event.isLast) sseEmitter.complete()
             }
         )
+        sseEmitter.onCompletion {
+            unsubscribeCallback()
+        }
+        sseEmitter.onError {
+            unsubscribeCallback()
+        }
+
         notifyGameState(gameId, game)
 
         return sseEmitter

@@ -5,7 +5,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.sql.Connection
 import java.sql.DriverManager
-import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.*
 import kotlin.concurrent.thread
 
 @Component
@@ -13,7 +13,8 @@ class Notifier {
 
     private val channel = "share_channel"
     private val connection = createConnection()
-    private val subscriberQueue = ConcurrentLinkedQueue<Subscriber>()
+    private val subscriberQueue = AssociatedSubscribers()
+    // ConcurrentLinkedQueue<Subscriber>()
 
     init {
         createNotifierTable()
@@ -25,10 +26,13 @@ class Notifier {
         }
     }
 
-    fun subscribe(topic: String, handler: (event: Event) -> Unit) {
+    fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
         logger.info("new subscriber topic '{}'", topic)
-        subscriberQueue.add(Subscriber(topic, handler))
+        val subscriberId = UUID.randomUUID()
+        subscriberQueue.addToKey(topic, Subscriber(subscriberId, handler))
+        // subscriberQueue.add(Subscriber(topic, handler))
         getLastEvent(topic)?.let { event -> handler(event) }
+        return { unListen(topic, subscriberId) }
     }
 
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
@@ -46,7 +50,8 @@ class Notifier {
                 logger.info("new notification [{}]", payload)
                 val event = createEvent(payload)
                 subscriberQueue
-                    .filter { subscriber -> subscriber.topic == event.topic }
+                    .getAll(event.topic)
+                    // .filter { subscriber -> subscriber.topic == event.topic }
                     .forEach { subscriber -> subscriber.handler(event) }
             }
         }
@@ -81,9 +86,9 @@ class Notifier {
     }
 
     // TODO("Call unListen")
-    private fun unListen() {
+    private fun unListen(topic: String, subscriberId: UUID) {
         logger.info("unListen channel '{}'", channel)
-        connection.createStatement().use { it.execute("UNLISTEN $channel;") }
+        subscriberQueue.removeIf(topic) { subs -> subs.id == subscriberId }
     }
 
     private fun getLastEvent(topic: String): Event? {

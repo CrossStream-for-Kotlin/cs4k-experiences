@@ -1,6 +1,8 @@
 package cs4k.prototype.broker
 
+import java.util.UUID
+
 class Subscriber(
-    val topic: String,
+    val id: UUID,
     val handler: (event: Event) -> Unit
 )
