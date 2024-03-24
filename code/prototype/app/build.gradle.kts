@@ -25,10 +25,7 @@ dependencies {
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
 
-    // For JDBI
-    implementation("org.jdbi:jdbi3-core:3.37.1")
-    implementation("org.jdbi:jdbi3-kotlin:3.37.1")
-    implementation("org.jdbi:jdbi3-postgres:3.37.1")
+    // For JDBC
     implementation("org.postgresql:postgresql:42.7.0")
 
     // For coroutines
