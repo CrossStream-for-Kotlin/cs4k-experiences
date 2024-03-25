@@ -25,29 +25,32 @@ class Notifier {
     }
 
     fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
-        val subscriberId = UUID.randomUUID()
-        associatedSubscribers.addToKey(topic, Subscriber(subscriberId, handler))
-        logger.info("new subscriber topic '{}' id '{}", topic, subscriberId)
+        val subscriber = Subscriber(
+            id = UUID.randomUUID(),
+            handler = handler
+        )
+        associatedSubscribers.addToKey(topic, subscriber)
+        logger.info("new subscriber topic '{}' id '{}", topic, subscriber.id)
 
         getLastEvent(topic)?.let { event -> handler(event) }
 
-        return { unsubscribe(topic, subscriberId) }
+        return { unsubscribe(topic, subscriber) }
     }
 
-    fun publish(topic: String, message: String, isLast: Boolean = false) {
-        notify(topic, message, isLast)
+    fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
+        notify(topic, message, isLastMessage)
     }
 
-    private fun unsubscribe(topic: String, subscriberId: UUID) {
-        associatedSubscribers.removeIf(topic) { subscriber -> subscriber.id == subscriberId }
-        logger.info("unsubscribe topic '{}' id '{}", topic, subscriberId)
+    private fun unsubscribe(topic: String, subscriber: Subscriber) {
+        associatedSubscribers.removeIf(topic) { sub -> sub.id == subscriber.id }
+        logger.info("unsubscribe topic '{}' id '{}", topic, subscriber.id)
     }
 
     private fun waitForNotification() {
         val pgConnection = connection.unwrap(PGConnection::class.java)
 
         while (!connection.isClosed) {
-            val newNotifications = pgConnection.getNotifications(0) ?: return
+            val newNotifications = pgConnection.getNotifications(0) ?: break
             newNotifications.forEach { notification ->
                 val payload = notification.parameter
                 logger.info("new notification [{}]", payload)
@@ -57,6 +60,8 @@ class Notifier {
                     .forEach { subscriber -> subscriber.handler(event) }
             }
         }
+        // connection.close()
+        // unListen()
     }
 
     private fun createEvent(payload: String): Event {
@@ -66,7 +71,7 @@ class Notifier {
             topic = splitPayload[0],
             id = splitPayload[1].toLong(),
             message = splitPayload[2],
-            isLast = splitPayload.size > 3 && splitPayload[3] == ("isLast")
+            isLast = splitPayload.size > 3 && splitPayload[3] == "isLast"
         )
     }
 
@@ -84,13 +89,13 @@ class Notifier {
         logger.info("unListen channel '{}'", channel)
     }
 
-    private fun notify(topic: String, message: String, isLast: Boolean) {
+    private fun notify(topic: String, message: String, isLastMessage: Boolean) {
         createConnection().use { conn ->
             conn.autoCommit = false
-            conn.transactionIsolation = Connection.TRANSACTION_SERIALIZABLE
+            // conn.transactionIsolation = Connection.TRANSACTION_SERIALIZABLE
 
-            val id = getEventIdAndUpdateHistory(conn, topic, message, isLast)
-            val payload = if (isLast) "$topic||$id||$message||isLast" else "$topic||$id||$message"
+            val id = getEventIdAndUpdateHistory(conn, topic, message, isLastMessage)
+            val payload = if (isLastMessage) "$topic||$id||$message||isLast" else "$topic||$id||$message"
 
             // 'select pg_notify()' is used because NOTIFY cannot be used in preparedStatement.
             // query results are ignored, but notifications are still sent.
@@ -129,10 +134,10 @@ class Notifier {
     private fun getEventIdAndUpdateHistory(conn: Connection, topic: String, message: String, isLast: Boolean): Long {
         conn.prepareStatement(
             """
-                insert into events (topic, message) 
-                values (?, ?) 
+                insert into events (topic, message, is_last) 
+                values (?, ?, ?) 
                 on conflict (topic) do update 
-                set id = events.id + 1, message = excluded.message, is_last = ? 
+                set id = events.id + 1, message = excluded.message, is_last = excluded.is_last
                 returning id;
             """.trimIndent()
         ).use { stm ->
@@ -140,7 +145,7 @@ class Notifier {
             stm.setString(2, message)
             stm.setBoolean(3, isLast)
             val rs = stm.executeQuery()
-            return if (rs.next()) rs.getLong("id") else error("ResultSet must have next.")
+            return if (rs.next()) rs.getLong("id") else throw IllegalStateException("TODO")
         }
     }
 
@@ -172,8 +177,8 @@ class Notifier {
 
 /**
  * TODO
- * - Call unListen at the end;
  * - Error handling;
+ * - Clean up subscribers and database;
  * - Change the call to createConnection for each 'getLastEvent' and 'notify' for an elastic connection poll;
  * - Try reduce 'notify' isolation level.
  */
