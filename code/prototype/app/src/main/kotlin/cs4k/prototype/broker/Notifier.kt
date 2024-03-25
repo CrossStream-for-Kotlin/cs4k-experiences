@@ -11,19 +11,36 @@ import kotlin.concurrent.thread
 @Component
 class Notifier {
 
+    // Channel to listen for notifications.
     private val channel = "share_channel"
+
+    // Connection to the database.
     private val connection = createConnection()
+
+    // Map that associates a topic with a list of subscribers.
     private val associatedSubscribers = AssociatedSubscribers()
 
     init {
+        // Create the events table if it does not exist.
         createEventsTable()
-
+        // Start a new thread to listen for notifications.
         thread {
+            // Listen for notifications.
             listen()
+            // Wait for notifications.
             waitForNotification()
         }
+        // Register a shutdown hook to call unListen when the application exits
+        Runtime.getRuntime().addShutdownHook(Thread {
+            unListen()
+        })
     }
 
+    /**
+     * Subscribe to a topic.
+     * @param topic String
+     * @param handler Function1<Event, Unit>
+     */
     fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
         val subscriber = Subscriber(
             id = UUID.randomUUID(),
@@ -37,15 +54,30 @@ class Notifier {
         return { unsubscribe(topic, subscriber) }
     }
 
+    /**
+     * Publish a message to a topic.
+     * @param topic String
+     * @param message String
+     * @param isLast Boolean
+     */
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
         notify(topic, message, isLastMessage)
     }
 
+    /**
+     * Unsubscribe from a topic.
+     * @param topic String
+     * @param subscriberId UUID
+     */
     private fun unsubscribe(topic: String, subscriber: Subscriber) {
         associatedSubscribers.removeIf(topic) { sub -> sub.id == subscriber.id }
         logger.info("unsubscribe topic '{}' id '{}", topic, subscriber.id)
     }
 
+    /**
+     * Wait for notifications.
+     * If a new notification arrives, create an event and call the handler of the associated subscribers.
+     */
     private fun waitForNotification() {
         val pgConnection = connection.unwrap(PGConnection::class.java)
 
@@ -64,6 +96,10 @@ class Notifier {
         // unListen()
     }
 
+    /**
+     * Create an event from the payload.
+     * @param payload String
+     */
     private fun createEvent(payload: String): Event {
         // TOPIC||ID||MESSAGE||[isLast]
         val splitPayload = payload.split("||")
@@ -75,6 +111,9 @@ class Notifier {
         )
     }
 
+    /**
+     * Listen for notifications.
+     */
     private fun listen() {
         connection.createStatement().use { stm ->
             stm.execute("listen $channel;")
@@ -89,6 +128,12 @@ class Notifier {
         logger.info("unListen channel '{}'", channel)
     }
 
+    /**
+     * Notify the topic with the message.
+     * @param topic String
+     * @param message String
+     * @param isLast Boolean
+     */
     private fun notify(topic: String, message: String, isLastMessage: Boolean) {
         createConnection().use { conn ->
             conn.autoCommit = false
@@ -112,6 +157,11 @@ class Notifier {
         }
     }
 
+    /**
+     * Get the last event from the topic.
+     * If the topic does not exist, return null.
+     * @param topic String
+     */
     private fun getLastEvent(topic: String): Event? {
         createConnection().use { conn ->
             conn.prepareStatement("select id, message, is_last from events where topic = ? for share;").use { stm ->
@@ -131,6 +181,17 @@ class Notifier {
         }
     }
 
+    /**
+     * Get the last event id and update the history.
+     * If the topic does not exist, insert a new one.
+     * If the topic exists, update the id and message.
+     * If the topic exists and isLast is true, update the isLast.
+     * Return the last event id.
+     * @param conn Connection
+     * @param topic String
+     * @param message String
+     * @param isLast Boolean
+     */
     private fun getEventIdAndUpdateHistory(conn: Connection, topic: String, message: String, isLast: Boolean): Long {
         conn.prepareStatement(
             """
@@ -149,6 +210,9 @@ class Notifier {
         }
     }
 
+    /**
+     * Create the events table if it does not exist.
+     */
     private fun createEventsTable() {
         connection.createStatement().use { stm ->
             stm.execute(
