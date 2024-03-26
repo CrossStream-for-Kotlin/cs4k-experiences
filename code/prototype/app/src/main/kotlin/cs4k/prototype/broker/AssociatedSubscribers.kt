@@ -11,6 +11,7 @@ class AssociatedSubscribers {
 
     // Map that associates a topic with a list of subscribers.
     private val map = mutableMapOf<String, List<Subscriber>>()
+
     // Lock to ensure thread safety.
     private val lock = ReentrantLock()
 

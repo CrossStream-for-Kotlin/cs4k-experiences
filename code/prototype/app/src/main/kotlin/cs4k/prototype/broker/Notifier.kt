@@ -30,16 +30,19 @@ class Notifier {
             // Wait for notifications.
             waitForNotification()
         }
-        // Register a shutdown hook to call unListen when the application exits
-        Runtime.getRuntime().addShutdownHook(Thread {
-            unListen()
-        })
+        // Register a shutdown hook to call unListen when the application exits.
+        Runtime.getRuntime().addShutdownHook(
+            Thread {
+                unListen()
+            }
+        )
     }
 
     /**
      * Subscribe to a topic.
+     * Returns the callback to be called when unsubscribing.
      * @param topic String
-     * @param handler Function1<Event, Unit>
+     * @param handler the handler to be called when there is a new event.
      */
     fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
         val subscriber = Subscriber(
@@ -58,7 +61,7 @@ class Notifier {
      * Publish a message to a topic.
      * @param topic String
      * @param message String
-     * @param isLast Boolean
+     * @param isLastMessage Boolean indicates if the message is the last one.
      */
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
         notify(topic, message, isLastMessage)
@@ -67,7 +70,7 @@ class Notifier {
     /**
      * Unsubscribe from a topic.
      * @param topic String
-     * @param subscriberId UUID
+     * @param subscriber [Subscriber]
      */
     private fun unsubscribe(topic: String, subscriber: Subscriber) {
         associatedSubscribers.removeIf(topic) { sub -> sub.id == subscriber.id }
@@ -121,6 +124,9 @@ class Notifier {
         logger.info("listen channel '{}'", channel)
     }
 
+    /**
+     * UnListen for notifications.
+     */
     private fun unListen() {
         connection.createStatement().use { stm ->
             stm.execute("unListen $channel;")
@@ -132,7 +138,7 @@ class Notifier {
      * Notify the topic with the message.
      * @param topic String
      * @param message String
-     * @param isLast Boolean
+     * @param isLastMessage Boolean indicates if the message is the last one.
      */
     private fun notify(topic: String, message: String, isLastMessage: Boolean) {
         createConnection().use { conn ->
@@ -182,15 +188,14 @@ class Notifier {
     }
 
     /**
-     * Get the last event id and update the history.
+     * Get the next event id and update the history.
      * If the topic does not exist, insert a new one.
-     * If the topic exists, update the id and message.
-     * If the topic exists and isLast is true, update the isLast.
-     * Return the last event id.
+     * If the topic exists, update the existing one.
+     * Return the next event id.
      * @param conn Connection
      * @param topic String
      * @param message String
-     * @param isLast Boolean
+     * @param isLast Boolean indicates if the message is the last one.
      */
     private fun getEventIdAndUpdateHistory(conn: Connection, topic: String, message: String, isLast: Boolean): Long {
         conn.prepareStatement(
@@ -231,6 +236,9 @@ class Notifier {
     companion object {
         private val logger = LoggerFactory.getLogger(Notifier::class.java)
 
+        /**
+         * Create a database connection.
+         */
         private fun createConnection(): Connection {
             val url = System.getenv("DB_URL")
                 ?: throw IllegalAccessException("No connection URL given - define DB_URL environment variable")
