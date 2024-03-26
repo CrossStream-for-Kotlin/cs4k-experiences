@@ -250,7 +250,4 @@ class Notifier {
 /**
  * TODO
  * - Error handling;
- * - Clean up subscribers and database;
- * - Change the call to createConnection for each 'getLastEvent' and 'notify' for an elastic connection poll;
- * - Try reduce 'notify' isolation level.
  */
