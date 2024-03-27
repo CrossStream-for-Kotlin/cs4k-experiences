@@ -7,7 +7,7 @@ import java.util.UUID
  * @param id the id of the subscriber.
  * @param handler the handler to call when an event is published to the topic.
  */
-class Subscriber(
+data class Subscriber(
     val id: UUID,
     val handler: (event: Event) -> Unit
 )
