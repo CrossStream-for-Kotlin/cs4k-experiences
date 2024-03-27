@@ -2,7 +2,7 @@ package cs4k.prototype.repository
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
-import cs4k.prototype.broker.Notifier
+import cs4k.prototype.broker.Broker
 import cs4k.prototype.domain.Game
 import cs4k.prototype.domain.GameError
 import cs4k.prototype.domain.GameInfo
@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit
 
 @Component
 class TicTacToeRepository(
-    val notifier: Notifier
+    val broker: Broker
 ) {
 
     init {
@@ -182,7 +182,7 @@ class TicTacToeRepository(
     private fun listenAndInitialNotify(gameId: Int, game: Game): SseEmitter {
         val sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(5))
 
-        val unsubscribeCallback = notifier.subscribe(
+        val unsubscribeCallback = broker.subscribe(
             topic = gameId.toString(),
             handler = { event ->
                 val sseEmitterEvent = SseEmitter.event()
@@ -213,7 +213,7 @@ class TicTacToeRepository(
      */
     private fun notifyGameState(gameId: Int, game: Game) {
         val gameInfo = GameInfo(gameId, game)
-        notifier.publish(
+        broker.publish(
             topic = "gameId$gameId",
             message = gameInfoObjectToJson(gameInfo)
         )

@@ -12,7 +12,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
-class NotifierTests {
+class BrokerTests {
 
     @Test
     fun `new subscriber in 1 topic should receive the last message`() {
@@ -20,13 +20,13 @@ class NotifierTests {
         val newTopic = newTopic()
         val newMessage = newMessage()
 
-        notifier.publish(
+        broker.publish(
             topic = newTopic,
             message = newMessage
         )
 
         // Act
-        notifier.subscribe(
+        broker.subscribe(
             topic = newTopic,
             handler = { event ->
                 // Assert
@@ -44,14 +44,14 @@ class NotifierTests {
         val newTopic = newTopic()
         val newMessage = newMessage()
 
-        notifier.publish(
+        broker.publish(
             topic = newTopic,
             message = newMessage
         )
 
         // Act
         repeat(NUMBER_OF_SUBSCRIBERS) {
-            notifier.subscribe(
+            broker.subscribe(
                 topic = newTopic,
                 handler = { event ->
                     // Assert
@@ -70,14 +70,14 @@ class NotifierTests {
         val newTopic = newTopic()
         val newMessage = newMessage()
 
-        notifier.publish(
+        broker.publish(
             topic = newTopic,
             message = newMessage,
             isLastMessage = true
         )
 
         // Act
-        notifier.subscribe(
+        broker.subscribe(
             topic = newTopic,
             handler = { event ->
                 // Assert
@@ -95,7 +95,7 @@ class NotifierTests {
         val newTopic = newTopic()
         val newMessage = newMessage()
 
-        notifier.publish(
+        broker.publish(
             topic = newTopic,
             message = newMessage,
             isLastMessage = true
@@ -103,7 +103,7 @@ class NotifierTests {
 
         // Act
         repeat(NUMBER_OF_SUBSCRIBERS) {
-            notifier.subscribe(
+            broker.subscribe(
                 topic = newTopic,
                 handler = { event ->
                     // Assert
@@ -122,7 +122,7 @@ class NotifierTests {
         val topic = newTopic()
         val message = newMessage()
 
-        notifier.subscribe(
+        broker.subscribe(
             topic = topic,
             handler = { event ->
                 // Assert
@@ -133,7 +133,7 @@ class NotifierTests {
         )
 
         // Act
-        notifier.publish(topic, message)
+        broker.publish(topic, message)
     }
 
     @Test
@@ -143,7 +143,7 @@ class NotifierTests {
         val message = newMessage()
 
         repeat(NUMBER_OF_SUBSCRIBERS) {
-            notifier.subscribe(
+            broker.subscribe(
                 topic = topic,
                 handler = { event ->
                     // Assert
@@ -155,7 +155,7 @@ class NotifierTests {
         }
 
         // Act
-        notifier.publish(topic, message)
+        broker.publish(topic, message)
     }
 
     @Test
@@ -166,7 +166,7 @@ class NotifierTests {
         val eventsReceived = ConcurrentLinkedQueue<Event>()
         val latch = CountDownLatch(NUMBER_OF_MESSAGES)
 
-        notifier.subscribe(
+        broker.subscribe(
             topic = topic,
             handler = { event ->
                 eventsReceived.add(event)
@@ -176,7 +176,7 @@ class NotifierTests {
 
         // Act
         messagesToSend.forEach { message ->
-            notifier.publish(topic, message)
+            broker.publish(topic, message)
         }
 
         latch.await(1, TimeUnit.MINUTES)
@@ -199,7 +199,7 @@ class NotifierTests {
         val latch = CountDownLatch(NUMBER_OF_SUBSCRIBERS * NUMBER_OF_MESSAGES)
 
         repeat(NUMBER_OF_SUBSCRIBERS) {
-            notifier.subscribe(
+            broker.subscribe(
                 topic = topic,
                 handler = { event ->
                     eventsReceived.add(event)
@@ -210,7 +210,7 @@ class NotifierTests {
 
         // Act
         messagesToSend.forEach { message ->
-            notifier.publish(topic, message)
+            broker.publish(topic, message)
         }
 
         latch.await(1, TimeUnit.MINUTES)
@@ -236,14 +236,14 @@ class NotifierTests {
 
         // Act
         topicsAndMessages.forEach { topic ->
-            notifier.subscribe(
+            broker.subscribe(
                 topic = topic.first,
                 handler = { event ->
                     eventsReceived.add(event)
                     latch.countDown()
                 }
             )
-            notifier.publish(
+            broker.publish(
                 topic = topic.first,
                 message = topic.second
             )
@@ -264,14 +264,14 @@ class NotifierTests {
         val message = newMessage()
         val latch = CountDownLatch(1)
 
-        val unsubscribe = notifier.subscribe(topic) { _ ->
+        val unsubscribe = broker.subscribe(topic) { _ ->
             // Assert
             fail("Event was emitted, however it should have unsubscribed.")
         }
 
         // Act
         unsubscribe()
-        notifier.publish(topic, message)
+        broker.publish(topic, message)
 
         thread {
             Thread.sleep(2000)
@@ -290,13 +290,13 @@ class NotifierTests {
 
         // Act
         repeat(NUMBER_OF_SUBSCRIBERS) {
-            val unsubscribe = notifier.subscribe(topic) { _ ->
+            val unsubscribe = broker.subscribe(topic) { _ ->
                 // Assert
                 fail("Event was emitted, however it should have unsubscribed.")
             }
             unsubscribe()
         }
-        notifier.publish(topic, message)
+        broker.publish(topic, message)
 
         thread {
             Thread.sleep(2000)
@@ -318,7 +318,7 @@ class NotifierTests {
         val latch = CountDownLatch(NUMBER_OF_SUBSCRIBERS * NUMBER_OF_MESSAGES)
 
         repeat(NUMBER_OF_SUBSCRIBERS) {
-            notifier.subscribe(
+            broker.subscribe(
                 topic = topic,
                 handler = { event ->
                     eventsReceived.add(event)
@@ -331,7 +331,7 @@ class NotifierTests {
         repeat(NUMBER_OF_MESSAGES) {
             val th = Thread {
                 try {
-                    notifier.publish(
+                    broker.publish(
                         topic = topic,
                         message = newMessage()
                     )
@@ -369,7 +369,7 @@ class NotifierTests {
 
         topics.forEach { topic ->
             repeat(NUMBER_OF_SUBSCRIBERS) {
-                notifier.subscribe(
+                broker.subscribe(
                     topic = topic,
                     handler = { event ->
                         eventsReceived.add(event)
@@ -384,7 +384,7 @@ class NotifierTests {
             repeat(NUMBER_OF_MESSAGES) {
                 val th = Thread {
                     try {
-                        notifier.publish(
+                        broker.publish(
                             topic = topic,
                             message = newMessage()
                         )
@@ -412,7 +412,7 @@ class NotifierTests {
     }
 
     companion object {
-        private val notifier = Notifier()
+        private val broker = Broker()
 
         private const val NUMBER_OF_TOPICS = 2
         private const val NUMBER_OF_SUBSCRIBERS = 50

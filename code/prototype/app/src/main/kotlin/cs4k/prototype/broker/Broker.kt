@@ -1,29 +1,35 @@
 package cs4k.prototype.broker
 
+import com.zaxxer.hikari.HikariConfig
+import com.zaxxer.hikari.HikariDataSource
 import kotlinx.serialization.json.Json
 import org.postgresql.PGConnection
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.sql.Connection
-import java.sql.DriverManager
 import java.util.UUID
 import kotlin.concurrent.thread
 
+
 @Component
-class Notifier {
+class Broker {
 
     // Channel to listen for notifications.
     private val channel = "share_channel"
 
-    // Connection to the database.
-    private val connection = createConnection()
-
     // Map that associates a topic with a list of subscribers.
     private val associatedSubscribers = AssociatedSubscribers()
 
+    // Connection pool.
+    private var dataSource: HikariDataSource = createConnectionPool()
+
+    private val retry = Retry(message = "Connection to the database was lost.")
+
     init {
+
         // Create the events table if it does not exist.
         createEventsTable()
+
         // Start a new thread to listen for notifications.
         thread {
             // Listen for notifications.
@@ -31,12 +37,6 @@ class Notifier {
             // Wait for notifications.
             waitForNotification()
         }
-        // Register a shutdown hook to call unListen when the application exits.
-        Runtime.getRuntime().addShutdownHook(
-            Thread {
-                unListen()
-            }
-        )
     }
 
     /**
@@ -69,6 +69,15 @@ class Notifier {
     }
 
     /**
+     * Shutdown the notifier.
+     */
+    fun shutdown() {
+        dataSource.close()
+        unListen()
+    }
+
+
+    /**
      * Unsubscribe from a topic.
      * @param topic String
      * @param subscriber [Subscriber]
@@ -83,20 +92,22 @@ class Notifier {
      * If a new notification arrives, create an event and call the handler of the associated subscribers.
      */
     private fun waitForNotification() {
-        val pgConnection = connection.unwrap(PGConnection::class.java)
+        retry.executeWithRetry {
+            dataSource.connection.use { conn ->
+                val pgConnection = conn.unwrap(PGConnection::class.java)
 
-        while (!connection.isClosed) {
-            val newNotifications = pgConnection.getNotifications(0) ?: break
-            newNotifications.forEach { notification ->
-                val event = deserialize(notification.parameter)
-                logger.info("new notification event '{}'", event)
-                associatedSubscribers
-                    .getAll(event.topic)
-                    .forEach { subscriber -> subscriber.handler(event) }
+                while (!conn.isClosed) {
+                    val newNotifications = pgConnection.getNotifications(0) ?: break
+                    newNotifications.forEach { notification ->
+                        val event = deserialize(notification.parameter)
+                        logger.info("new notification event '{}'", event)
+                        associatedSubscribers
+                            .getAll(event.topic)
+                            .forEach { subscriber -> subscriber.handler(event) }
+                    }
+                }
             }
         }
-        // connection.close()
-        // unListen()
     }
 
     /**
@@ -117,8 +128,10 @@ class Notifier {
      * Listen for notifications.
      */
     private fun listen() {
-        connection.createStatement().use { stm ->
-            stm.execute("listen $channel;")
+        dataSource.connection.use { conn ->
+            conn.createStatement().use { stm ->
+                stm.execute("listen $channel;")
+            }
         }
         logger.info("listen channel '{}'", channel)
     }
@@ -127,8 +140,10 @@ class Notifier {
      * UnListen for notifications.
      */
     private fun unListen() {
-        connection.createStatement().use { stm ->
-            stm.execute("unListen $channel;")
+        dataSource.connection.use { conn ->
+            conn.createStatement().use { stm ->
+                stm.execute("unListen $channel;")
+            }
         }
         logger.info("unListen channel '{}'", channel)
     }
@@ -140,7 +155,7 @@ class Notifier {
      * @param isLastMessage Boolean indicates if the message is the last one.
      */
     private fun notify(topic: String, message: String, isLastMessage: Boolean) {
-        createConnection().use { conn ->
+        dataSource.connection.use { conn ->
             conn.autoCommit = false
             // conn.transactionIsolation = Connection.TRANSACTION_SERIALIZABLE
 
@@ -172,7 +187,7 @@ class Notifier {
      * @param topic String
      */
     private fun getLastEvent(topic: String): Event? {
-        createConnection().use { conn ->
+        dataSource.connection.use { conn ->
             conn.prepareStatement("select id, message, is_last from events where topic = ? for share;").use { stm ->
                 stm.setString(1, topic)
                 val rs = stm.executeQuery()
@@ -222,9 +237,10 @@ class Notifier {
      * Create the events table if it does not exist.
      */
     private fun createEventsTable() {
-        connection.createStatement().use { stm ->
-            stm.execute(
-                """
+        dataSource.connection.use { conn ->
+            conn.createStatement().use { stm ->
+                stm.execute(
+                    """
                     create table if not exists events (
                         topic varchar(128) primary key, 
                         id integer default 0, 
@@ -232,20 +248,29 @@ class Notifier {
                         is_last boolean default false
                     );
                 """.trimIndent()
-            )
+                )
+            }
         }
     }
 
+
     companion object {
-        private val logger = LoggerFactory.getLogger(Notifier::class.java)
+        private val logger = LoggerFactory.getLogger(Broker::class.java)
+
+        // Retry mechanism.
+        private val retry = Retry(message = "Failed to stablish connection to the database.")
 
         /**
-         * Create a database connection.
+         * Create a connection to the database.
          */
-        private fun createConnection(): Connection {
-            val url = System.getenv("DB_URL")
+        private fun createConnectionPool(): HikariDataSource {
+            val config = HikariConfig()
+            val dbUrl = System.getenv("DB_URL")
                 ?: throw IllegalAccessException("No connection URL given - define DB_URL environment variable")
-            return DriverManager.getConnection(url)
+            return retry.executeWithRetry {
+                config.jdbcUrl = dbUrl
+                HikariDataSource(config)
+            }
         }
     }
 }

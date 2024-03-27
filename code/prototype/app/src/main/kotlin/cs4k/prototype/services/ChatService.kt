@@ -1,13 +1,13 @@
 package cs4k.prototype.services
 
-import cs4k.prototype.broker.Notifier
+import cs4k.prototype.broker.Broker
 import cs4k.prototype.services.SseEvent.Message
 import org.springframework.stereotype.Component
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import java.util.concurrent.TimeUnit
 
 @Component
-class ChatService(val notifier: Notifier) {
+class ChatService(val broker: Broker) {
 
     private val generalGroup = "general"
 
@@ -18,7 +18,7 @@ class ChatService(val notifier: Notifier) {
      */
     fun newListener(group: String?): SseEmitter {
         val sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(30))
-        val unsubscribeCallback = notifier.subscribe(
+        val unsubscribeCallback = broker.subscribe(
             topic = group ?: generalGroup,
             handler = { event ->
                 try {
@@ -46,7 +46,7 @@ class ChatService(val notifier: Notifier) {
      * @param message message to send to the group.
      */
     fun sendMessage(group: String?, message: String) {
-        notifier.publish(
+        broker.publish(
             topic = group ?: generalGroup,
             message = message
         )

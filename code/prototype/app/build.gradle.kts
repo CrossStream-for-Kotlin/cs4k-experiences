@@ -36,6 +36,10 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webflux") // To use WebTestClient on tests
     testImplementation(kotlin("test"))
+
+    // For HikariCP
+    implementation ("com.zaxxer:HikariCP:4.0.3")
+
 }
 
 tasks.withType<KotlinCompile> {
