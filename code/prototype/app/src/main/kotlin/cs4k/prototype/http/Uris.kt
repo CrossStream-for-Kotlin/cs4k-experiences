@@ -7,8 +7,6 @@ object Uris {
     object Chat {
         const val LISTEN = "$PREFIX/chat/listen"
         const val SEND = "$PREFIX/chat/send"
-        const val LISTEN_GROUP = "$PREFIX/chat/listen/{group}"
-        const val SEND_TO_GROUP = "$PREFIX/chat/send/{group}"
     }
 
     object TicTacToe {

@@ -1,6 +1,7 @@
 package cs4k.prototype.services
 
 import cs4k.prototype.broker.Notifier
+import cs4k.prototype.services.SseEvent.Message
 import org.springframework.stereotype.Component
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import java.util.concurrent.TimeUnit
@@ -13,38 +14,40 @@ class ChatService(val notifier: Notifier) {
     /**
      * Join a chat group.
      * @param group the optional name of the group.
+     * @return the Spring SSEEmitter.
      */
-    fun newListener(group: String = generalGroup): SseEmitter {
-        val sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(5))
+    fun newListener(group: String?): SseEmitter {
+        val sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(30))
         val unsubscribeCallback = notifier.subscribe(
-            topic = group,
+            topic = group ?: generalGroup,
             handler = { event ->
-                val sseEmitterEvent = SseEmitter.event()
-                    .name(event.topic)
-                    .id(event.id.toString())
-                    .data("event: ${event.topic} - id: ${event.id} - data: ${event.message}")
-                sseEmitter.send(sseEmitterEvent)
-
-                if (event.isLast) sseEmitter.complete()
+                try {
+                    Message(event.topic, event.id, event.message).writeTo(sseEmitter)
+                    if (event.isLast) sseEmitter.complete()
+                } catch (ex: Exception) {
+                    sseEmitter.completeWithError(ex)
+                }
             }
         )
+
         sseEmitter.onCompletion {
             unsubscribeCallback()
         }
         sseEmitter.onError {
             unsubscribeCallback()
         }
+
         return sseEmitter
     }
 
     /**
      * Send a message to a group.
-     * @param message message to send to the group.
      * @param group the optional name of the group.
+     * @param message message to send to the group.
      */
-    fun sendMessage(message: String, group: String = generalGroup) {
+    fun sendMessage(group: String?, message: String) {
         notifier.publish(
-            topic = group,
+            topic = group ?: generalGroup,
             message = message
         )
     }

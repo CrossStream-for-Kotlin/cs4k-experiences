@@ -1,7 +1,7 @@
 {
 	"info": {
 		"_postman_id": "53e0277d-1f74-4f59-a96e-74bce17f8ef3",
-		"name": "CS$K",
+		"name": "CS4K",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
 		"_exporter_id": "24269912"
 	},
@@ -18,7 +18,7 @@
 								"method": "GET",
 								"header": [],
 								"url": {
-									"raw": "http://localhost:8080/api/chat/listen",
+									"raw": "http://localhost:8080/api/chat/listen?group={group}",
 									"protocol": "http",
 									"host": [
 										"localhost"
@@ -28,28 +28,12 @@
 										"api",
 										"chat",
 										"listen"
-									]
-								}
-							},
-							"response": []
-						},
-						{
-							"name": "Listen Group",
-							"request": {
-								"method": "GET",
-								"header": [],
-								"url": {
-									"raw": "http://localhost:8080/api/chat/listen/group",
-									"protocol": "http",
-									"host": [
-										"localhost"
 									],
-									"port": "8080",
-									"path": [
-										"api",
-										"chat",
-										"listen",
-										"group"
+									"query": [
+										{
+											"key": "group",
+											"value": "{group}"
+										}
 									]
 								}
 							},
@@ -62,7 +46,7 @@
 								"header": [],
 								"body": {
 									"mode": "raw",
-									"raw": "hello\r\n",
+									"raw": "[...message...]\r\n",
 									"options": {
 										"raw": {
 											"language": "text"
@@ -70,7 +54,7 @@
 									}
 								},
 								"url": {
-									"raw": "http://localhost:8080/api/chat/send",
+									"raw": "http://localhost:8080/api/chat/send?group={group}",
 									"protocol": "http",
 									"host": [
 										"localhost"
@@ -80,37 +64,12 @@
 										"api",
 										"chat",
 										"send"
-									]
-								}
-							},
-							"response": []
-						},
-						{
-							"name": "Send To Group",
-							"request": {
-								"method": "POST",
-								"header": [],
-								"body": {
-									"mode": "raw",
-									"raw": "hello",
-									"options": {
-										"raw": {
-											"language": "json"
-										}
-									}
-								},
-								"url": {
-									"raw": "http://localhost:8080/api/chat/send/group",
-									"protocol": "http",
-									"host": [
-										"localhost"
 									],
-									"port": "8080",
-									"path": [
-										"api",
-										"chat",
-										"send",
-										"group"
+									"query": [
+										{
+											"key": "group",
+											"value": "{group}"
+										}
 									]
 								}
 							},
