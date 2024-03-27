@@ -1,5 +1,6 @@
 package cs4k.prototype.broker
 
+import kotlinx.serialization.json.Json
 import org.postgresql.PGConnection
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -87,9 +88,8 @@ class Notifier {
         while (!connection.isClosed) {
             val newNotifications = pgConnection.getNotifications(0) ?: break
             newNotifications.forEach { notification ->
-                val payload = notification.parameter
-                logger.info("new notification [{}]", payload)
-                val event = createEvent(payload)
+                val event = deserialize(notification.parameter)
+                logger.info("new notification event '{}'", event)
                 associatedSubscribers
                     .getAll(event.topic)
                     .forEach { subscriber -> subscriber.handler(event) }
@@ -100,19 +100,18 @@ class Notifier {
     }
 
     /**
-     * Create an event from the payload.
-     * @param payload String
+     * Serialize an event to JSON string.
+     * @param event the event to serialize.
+     * @return the resulting JSON string.
      */
-    private fun createEvent(payload: String): Event {
-        // TOPIC||ID||MESSAGE||[isLast]
-        val splitPayload = payload.split("||")
-        return Event(
-            topic = splitPayload[0],
-            id = splitPayload[1].toLong(),
-            message = splitPayload[2],
-            isLast = splitPayload.size > 3 && splitPayload[3] == "isLast"
-        )
-    }
+    private fun serialize(event: Event) = Json.encodeToString(Event.serializer(), event)
+
+    /**
+     * Deserialize a JSON string to event.
+     * @param payload the JSON string to deserialize.
+     * @return the resulting event.
+     */
+    private fun deserialize(payload: String) = Json.decodeFromString(Event.serializer(), payload)
 
     /**
      * Listen for notifications.
@@ -145,21 +144,25 @@ class Notifier {
             conn.autoCommit = false
             // conn.transactionIsolation = Connection.TRANSACTION_SERIALIZABLE
 
-            val id = getEventIdAndUpdateHistory(conn, topic, message, isLastMessage)
-            val payload = if (isLastMessage) "$topic||$id||$message||isLast" else "$topic||$id||$message"
+            val event = Event(
+                topic = topic,
+                id = getEventIdAndUpdateHistory(conn, topic, message, isLastMessage),
+                message = message,
+                isLast = isLastMessage
+            )
 
             // 'select pg_notify()' is used because NOTIFY cannot be used in preparedStatement.
             // query results are ignored, but notifications are still sent.
             conn.prepareStatement("select pg_notify(?, ?)").use { stm ->
                 stm.setString(1, channel)
-                stm.setString(2, payload)
+                stm.setString(2, serialize(event))
                 stm.execute()
             }
 
             conn.commit()
             conn.autoCommit = true
 
-            logger.info("notify topic '{}' [{}]", topic, payload)
+            logger.info("notify topic '{}' event '{}", topic, event)
         }
     }
 
@@ -246,8 +249,3 @@ class Notifier {
         }
     }
 }
-
-/**
- * TODO
- * - Error handling;
- */

@@ -3,9 +3,10 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 plugins {
     id("org.springframework.boot") version "3.1.4"
     id("io.spring.dependency-management") version "1.1.3"
+    id("org.jlleitschuh.gradle.ktlint") version "11.6.0"
     kotlin("jvm") version "1.8.22"
     kotlin("plugin.spring") version "1.8.22"
-    id("org.jlleitschuh.gradle.ktlint") version "11.6.0"
+    kotlin("plugin.serialization") version "1.5.21"
 }
 
 group = "pt.isel.ps"
@@ -25,11 +26,11 @@ dependencies {
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
 
-    // For JDBC
+    // For Postgresql
     implementation("org.postgresql:postgresql:42.7.0")
 
-    // For coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    // For JSON
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.3.0")
 
     // For automated tests
     testImplementation("org.springframework.boot:spring-boot-starter-test")
