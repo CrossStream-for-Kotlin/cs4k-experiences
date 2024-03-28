@@ -6,7 +6,7 @@ sealed interface SseEvent {
 
     fun writeTo(emitter: SseEmitter)
 
-    class Message(name: String, id: Long, data: String) : SseEvent {
+    class Message(name: String, id: Long, data: Any) : SseEvent {
 
         private val event = SseEmitter.event()
             .name(name)
