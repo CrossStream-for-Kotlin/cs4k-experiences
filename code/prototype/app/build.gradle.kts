@@ -6,7 +6,6 @@ plugins {
     id("org.jlleitschuh.gradle.ktlint") version "11.6.0"
     kotlin("jvm") version "1.8.22"
     kotlin("plugin.spring") version "1.8.22"
-    kotlin("plugin.serialization") version "1.5.21"
 }
 
 group = "pt.isel.ps"
@@ -21,7 +20,7 @@ repositories {
 }
 
 dependencies {
-    // For Spring
+    // For Spring and JSON
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
@@ -29,17 +28,13 @@ dependencies {
     // For Postgresql
     implementation("org.postgresql:postgresql:42.7.0")
 
-    // For JSON
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.3.0")
-
     // For automated tests
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webflux") // To use WebTestClient on tests
     testImplementation(kotlin("test"))
 
     // For HikariCP
-    implementation ("com.zaxxer:HikariCP:4.0.3")
-
+    implementation("com.zaxxer:HikariCP:4.0.3")
 }
 
 tasks.withType<KotlinCompile> {

@@ -4,7 +4,7 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 /**
- * This class is responsible for managing the association between topics and [Subscriber]s.
+ * Responsible for managing the association between topics and [Subscriber]s.
  * It is thread-safe.
  */
 class AssociatedSubscribers {
