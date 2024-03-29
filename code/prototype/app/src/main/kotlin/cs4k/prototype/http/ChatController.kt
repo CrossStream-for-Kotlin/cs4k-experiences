@@ -1,5 +1,6 @@
 package cs4k.prototype.http
 
+import cs4k.prototype.http.models.input.MessageInputModel
 import cs4k.prototype.services.ChatService
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
@@ -19,7 +20,7 @@ class ChatController(
     }
 
     @PostMapping(Uris.Chat.SEND)
-    fun send(@RequestParam group: String?, @RequestBody message: String) {
-        chatService.sendMessage(group, message)
+    fun send(@RequestParam group: String?, @RequestBody body: MessageInputModel) {
+        chatService.sendMessage(group, body.message)
     }
 }

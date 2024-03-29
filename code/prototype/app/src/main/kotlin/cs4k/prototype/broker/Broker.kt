@@ -1,18 +1,20 @@
 package cs4k.prototype.broker
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
-import kotlinx.serialization.json.Json
+import cs4k.prototype.broker.BrokerException.BrokerTurnOffException
 import org.postgresql.PGConnection
 import org.slf4j.LoggerFactory
+import org.springframework.core.env.Environment
 import org.springframework.stereotype.Component
 import java.sql.Connection
 import java.util.UUID
 import kotlin.concurrent.thread
 
-
 @Component
-class Broker() {
+class Broker {
 
     // Channel to listen for notifications.
     private val channel = "share_channel"
@@ -41,11 +43,14 @@ class Broker() {
 
     /**
      * Subscribe to a topic.
-     * Returns the callback to be called when unsubscribing.
      * @param topic String
      * @param handler the handler to be called when there is a new event.
+     * @return the callback to be called when unsubscribing.
+     * @throws BrokerTurnOffException if the broker is turned off.
      */
     fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
+        if (dataSource.isClosed) throw BrokerTurnOffException()
+
         val subscriber = Subscriber(
             id = UUID.randomUUID(),
             handler = handler
@@ -63,19 +68,23 @@ class Broker() {
      * @param topic String
      * @param message String
      * @param isLastMessage Boolean indicates if the message is the last one.
+     * @throws BrokerTurnOffException if the broker is turned off.
      */
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
+        if (dataSource.isClosed) throw BrokerTurnOffException()
+
         notify(topic, message, isLastMessage)
     }
 
     /**
-     * Shutdown the notifier.
+     * Shutdown the broker.
      */
     fun shutdown() {
-        dataSource.close()
-        unListen()
-    }
+        if (dataSource.isClosed) throw BrokerTurnOffException()
 
+        unListen()
+        dataSource.close()
+    }
 
     /**
      * Unsubscribe from a topic.
@@ -99,8 +108,8 @@ class Broker() {
                 while (!conn.isClosed) {
                     val newNotifications = pgConnection.getNotifications(0) ?: break
                     newNotifications.forEach { notification ->
+                        logger.info("new notification '{}'", notification.parameter)
                         val event = deserialize(notification.parameter)
-                        logger.info("new notification event '{}'", event)
                         associatedSubscribers
                             .getAll(event.topic)
                             .forEach { subscriber -> subscriber.handler(event) }
@@ -115,14 +124,14 @@ class Broker() {
      * @param event the event to serialize.
      * @return the resulting JSON string.
      */
-    private fun serialize(event: Event) = Json.encodeToString(Event.serializer(), event)
+    private fun serialize(event: Event) = objectMapper.writeValueAsString(event)
 
     /**
      * Deserialize a JSON string to event.
      * @param payload the JSON string to deserialize.
      * @return the resulting event.
      */
-    private fun deserialize(payload: String) = Json.decodeFromString(Event.serializer(), payload)
+    private fun deserialize(payload: String) = objectMapper.readValue(payload, Event::class.java)
 
     /**
      * Listen for notifications.
@@ -262,9 +271,12 @@ class Broker() {
         }
     }
 
-
     companion object {
+        // Logger instance for logging Broker class events.
         private val logger = LoggerFactory.getLogger(Broker::class.java)
+
+        // ObjectMapper instance for serializing and deserializing JSON with Kotlin support.
+        private val objectMapper = ObjectMapper().registerModules(KotlinModule.Builder().build())
 
         // Retry mechanism.
         private val retry = Retry()
