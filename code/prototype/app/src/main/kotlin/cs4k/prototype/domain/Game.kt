@@ -21,7 +21,8 @@ data class Game(
         val shape: Shape
     )
 
-    private val state: State = when {
+    @JsonIgnore
+    val state: State = when {
         oPlayer == null -> State.WAITING
         hasWon(Shape.X) -> State.X_WIN
         hasWon(Shape.O) -> State.O_WIN
