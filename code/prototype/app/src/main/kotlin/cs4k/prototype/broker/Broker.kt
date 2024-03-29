@@ -12,7 +12,7 @@ import kotlin.concurrent.thread
 
 
 @Component
-class Broker {
+class Broker() {
 
     // Channel to listen for notifications.
     private val channel = "share_channel"
@@ -23,7 +23,7 @@ class Broker {
     // Connection pool.
     private var dataSource: HikariDataSource = createConnectionPool()
 
-    private val retry = Retry(message = "Connection to the database was lost.")
+    private val retry = Retry()
 
     init {
 
@@ -92,7 +92,7 @@ class Broker {
      * If a new notification arrives, create an event and call the handler of the associated subscribers.
      */
     private fun waitForNotification() {
-        retry.executeWithRetry {
+        retry.executeWithRetry("Connection Failed: wait for notifications.") {
             dataSource.connection.use { conn ->
                 val pgConnection = conn.unwrap(PGConnection::class.java)
 
@@ -128,24 +128,28 @@ class Broker {
      * Listen for notifications.
      */
     private fun listen() {
-        dataSource.connection.use { conn ->
-            conn.createStatement().use { stm ->
-                stm.execute("listen $channel;")
+        retry.executeWithRetry("Connection Failed: listen for notifications.") {
+            dataSource.connection.use { conn ->
+                conn.createStatement().use { stm ->
+                    stm.execute("listen $channel;")
+                }
             }
+            logger.info("listen channel '{}'", channel)
         }
-        logger.info("listen channel '{}'", channel)
     }
 
     /**
      * UnListen for notifications.
      */
     private fun unListen() {
-        dataSource.connection.use { conn ->
-            conn.createStatement().use { stm ->
-                stm.execute("unListen $channel;")
+        retry.executeWithRetry("Connection Failed: unListen for notifications.") {
+            dataSource.connection.use { conn ->
+                conn.createStatement().use { stm ->
+                    stm.execute("unListen $channel;")
+                }
             }
+            logger.info("unListen channel '{}'", channel)
         }
-        logger.info("unListen channel '{}'", channel)
     }
 
     /**
@@ -155,29 +159,31 @@ class Broker {
      * @param isLastMessage Boolean indicates if the message is the last one.
      */
     private fun notify(topic: String, message: String, isLastMessage: Boolean) {
-        dataSource.connection.use { conn ->
-            conn.autoCommit = false
-            // conn.transactionIsolation = Connection.TRANSACTION_SERIALIZABLE
+        retry.executeWithRetry("Connection Failed: notify topic.") {
+            dataSource.connection.use { conn ->
+                conn.autoCommit = false
+                // conn.transactionIsolation = Connection.TRANSACTION_SERIALIZABLE
 
-            val event = Event(
-                topic = topic,
-                id = getEventIdAndUpdateHistory(conn, topic, message, isLastMessage),
-                message = message,
-                isLast = isLastMessage
-            )
+                val event = Event(
+                    topic = topic,
+                    id = getEventIdAndUpdateHistory(conn, topic, message, isLastMessage),
+                    message = message,
+                    isLast = isLastMessage
+                )
 
-            // 'select pg_notify()' is used because NOTIFY cannot be used in preparedStatement.
-            // query results are ignored, but notifications are still sent.
-            conn.prepareStatement("select pg_notify(?, ?)").use { stm ->
-                stm.setString(1, channel)
-                stm.setString(2, serialize(event))
-                stm.execute()
+                // 'select pg_notify()' is used because NOTIFY cannot be used in preparedStatement.
+                // query results are ignored, but notifications are still sent.
+                conn.prepareStatement("select pg_notify(?, ?)").use { stm ->
+                    stm.setString(1, channel)
+                    stm.setString(2, serialize(event))
+                    stm.execute()
+                }
+
+                conn.commit()
+                conn.autoCommit = true
+
+                logger.info("notify topic '{}' event '{}", topic, event)
             }
-
-            conn.commit()
-            conn.autoCommit = true
-
-            logger.info("notify topic '{}' event '{}", topic, event)
         }
     }
 
@@ -186,24 +192,25 @@ class Broker {
      * If the topic does not exist, return null.
      * @param topic String
      */
-    private fun getLastEvent(topic: String): Event? {
-        dataSource.connection.use { conn ->
-            conn.prepareStatement("select id, message, is_last from events where topic = ? for share;").use { stm ->
-                stm.setString(1, topic)
-                val rs = stm.executeQuery()
-                return if (rs.next()) {
-                    Event(
-                        topic = topic,
-                        id = rs.getLong("id"),
-                        message = rs.getString("message"),
-                        isLast = rs.getBoolean("is_last")
-                    )
-                } else {
-                    null
+    private fun getLastEvent(topic: String): Event? =
+        retry.executeWithRetry("Connection Failed: get last event.") {
+            dataSource.connection.use { conn ->
+                conn.prepareStatement("select id, message, is_last from events where topic = ? for share;").use { stm ->
+                    stm.setString(1, topic)
+                    val rs = stm.executeQuery()
+                    return@executeWithRetry if (rs.next()) {
+                        Event(
+                            topic = topic,
+                            id = rs.getLong("id"),
+                            message = rs.getString("message"),
+                            isLast = rs.getBoolean("is_last")
+                        )
+                    } else {
+                        null
+                    }
                 }
             }
         }
-    }
 
     /**
      * Get the next event id and update the history.
@@ -237,10 +244,11 @@ class Broker {
      * Create the events table if it does not exist.
      */
     private fun createEventsTable() {
-        dataSource.connection.use { conn ->
-            conn.createStatement().use { stm ->
-                stm.execute(
-                    """
+        retry.executeWithRetry("Connection Failed: create events table.") {
+            dataSource.connection.use { conn ->
+                conn.createStatement().use { stm ->
+                    stm.execute(
+                        """
                     create table if not exists events (
                         topic varchar(128) primary key, 
                         id integer default 0, 
@@ -248,7 +256,8 @@ class Broker {
                         is_last boolean default false
                     );
                 """.trimIndent()
-                )
+                    )
+                }
             }
         }
     }
@@ -258,7 +267,7 @@ class Broker {
         private val logger = LoggerFactory.getLogger(Broker::class.java)
 
         // Retry mechanism.
-        private val retry = Retry(message = "Failed to stablish connection to the database.")
+        private val retry = Retry()
 
         /**
          * Create a connection to the database.
@@ -267,7 +276,7 @@ class Broker {
             val config = HikariConfig()
             val dbUrl = System.getenv("DB_URL")
                 ?: throw IllegalAccessException("No connection URL given - define DB_URL environment variable")
-            return retry.executeWithRetry {
+            return retry.executeWithRetry("Failed to stablish connection.") {
                 config.jdbcUrl = dbUrl
                 HikariDataSource(config)
             }

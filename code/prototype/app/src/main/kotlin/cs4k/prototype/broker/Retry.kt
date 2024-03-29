@@ -9,14 +9,16 @@ package cs4k.prototype.broker
 class Retry(
     private val maxRetries: Int = 3,
     private val waitTimeMillis: Long = 1000,
-    private val message: String = "Maximum number of retries reached."
 ) {
     /**
      * Execute an action with retry mechanism.
      * @param action the action to execute.
      * @return the result of the action.
      */
-    fun <T> executeWithRetry(action: () -> T): T {
+    fun <T> executeWithRetry(
+        exceptionMessage: String = "Failed to execute action with retry mechanism.",
+        action: () -> T
+    ): T {
         var result: T? = null
         var retryCount = 0
 
@@ -30,7 +32,7 @@ class Retry(
         }
 
         if (result == null) {
-            throw IllegalStateException(message)
+            throw Exception(exceptionMessage)
         }
 
         return result
