@@ -5,12 +5,18 @@ import com.fasterxml.jackson.module.kotlin.KotlinModule
 import cs4k.prototype.broker.Broker
 import cs4k.prototype.domain.Message
 import cs4k.prototype.http.models.output.MessageOutputModel
+import jakarta.annotation.PreDestroy
 import org.springframework.stereotype.Component
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import java.util.concurrent.TimeUnit
 
 @Component
 class ChatService(val broker: Broker) {
+
+    @PreDestroy
+    fun clanUp() {
+        broker.shutdown()
+    }
 
     private val generalGroup = "general"
 

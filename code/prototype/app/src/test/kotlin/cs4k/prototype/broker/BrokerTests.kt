@@ -273,6 +273,9 @@ class BrokerTests {
 
         latch.await(1, TimeUnit.MINUTES)
 
+        // Assert
+        assertEquals(NUMBER_OF_TOPICS * NUMBER_OF_SUBSCRIBERS * NUMBER_OF_MESSAGES, eventsReceived.size)
+
         eventsReceived.forEach { event ->
             val entry = topicsAndMessages[event.topic]
             assertNotNull(entry)
