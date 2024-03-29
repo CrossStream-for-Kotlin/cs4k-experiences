@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit
 
 @Component
 class TicTacToeRepository(
-    val broker: Broker
+
 ) {
 
     init {
@@ -63,10 +63,10 @@ class TicTacToeRepository(
      * @param game the game to be played.
      * @param player the player that is waiting.
      */
-    fun registerWaiting(game: Game, player: String): SseEmitter {
+    fun registerWaiting(game: Game, player: String): Int {
         val gameId = createGame(game)
         standby(player, gameId)
-        return listenAndInitialNotify(gameId, game)
+        return gameId
     }
 
     /**
@@ -112,10 +112,9 @@ class TicTacToeRepository(
      * @param game the game to be played.
      * @param gameId the id of the game.
      */
-    fun startGame(game: Game, gameId: Int): SseEmitter {
+    fun startGame(game: Game, gameId: Int) {
         stopWaiting(gameId)
         updateGame(gameId, game)
-        return listenAndInitialNotify(gameId, game)
     }
 
     /**
@@ -162,7 +161,6 @@ class TicTacToeRepository(
             stm.setInt(2, id)
             stm.executeUpdate()
         }
-        notifyGameState(id, game)
     }
 
     /**
@@ -172,51 +170,6 @@ class TicTacToeRepository(
         val url = System.getenv("DB_URL")
             ?: throw IllegalAccessException("No connection URL given - define DB_URL environment variable")
         return DriverManager.getConnection(url)
-    }
-
-    /**
-     * Listen for changes in the game state and notify the player.
-     * @param gameId the id of the game.
-     * @param game the game to be played.
-     */
-    private fun listenAndInitialNotify(gameId: Int, game: Game): SseEmitter {
-        val sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(5))
-
-        val unsubscribeCallback = broker.subscribe(
-            topic = gameId.toString(),
-            handler = { event ->
-                val sseEmitterEvent = SseEmitter.event()
-                    .name(event.topic)
-                    .id(event.id.toString())
-                    .data("event: ${event.topic} - id: ${event.id} - data: ${event.message}")
-                sseEmitter.send(sseEmitterEvent)
-
-                if (event.isLast) sseEmitter.complete()
-            }
-        )
-        sseEmitter.onCompletion {
-            unsubscribeCallback()
-        }
-        sseEmitter.onError {
-            unsubscribeCallback()
-        }
-
-        notifyGameState(gameId, game)
-
-        return sseEmitter
-    }
-
-    /**
-     * Notify the player of the game state.
-     * @param gameId the id of the game.
-     * @param game the game to be played.
-     */
-    private fun notifyGameState(gameId: Int, game: Game) {
-        val gameInfo = GameInfo(gameId, game)
-        broker.publish(
-            topic = "gameId$gameId",
-            message = gameInfoObjectToJson(gameInfo)
-        )
     }
 
     companion object {

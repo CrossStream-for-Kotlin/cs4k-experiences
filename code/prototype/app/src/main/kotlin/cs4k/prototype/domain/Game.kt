@@ -63,7 +63,8 @@ data class Game(
         return shapePieces.count { it.row == it.column } >= gameSize
     }
 
-    private fun isPlayerOfGame(player: String): Boolean {
+    @JsonIgnore
+    fun isPlayerOfGame(player: String): Boolean {
         return player == xPlayer || player == oPlayer
     }
 

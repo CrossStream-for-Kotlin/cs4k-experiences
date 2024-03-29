@@ -11,6 +11,7 @@ object Uris {
 
     object TicTacToe {
         const val START = "$PREFIX/game"
+        const val RELISTEN = "$PREFIX/game/{id}"
         const val PLAY = "$PREFIX/game/{id}"
     }
 }

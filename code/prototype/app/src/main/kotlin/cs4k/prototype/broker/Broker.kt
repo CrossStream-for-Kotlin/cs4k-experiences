@@ -63,6 +63,10 @@ class Broker {
         return { unsubscribe(topic, subscriber) }
     }
 
+    fun <K> publish(topic: String, payload: K, isLastMessage: Boolean = false) {
+        publish(topic, objectMapper.writeValueAsString(payload), isLastMessage)
+    }
+
     /**
      * Publish a message to a topic.
      * @param topic String
@@ -72,7 +76,6 @@ class Broker {
      */
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
         if (dataSource.isClosed) throw BrokerTurnOffException()
-
         notify(topic, message, isLastMessage)
     }
 
