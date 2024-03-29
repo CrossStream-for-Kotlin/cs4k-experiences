@@ -2,22 +2,17 @@ package cs4k.prototype.repository
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
-import cs4k.prototype.broker.Broker
 import cs4k.prototype.domain.Game
 import cs4k.prototype.domain.GameError
 import cs4k.prototype.domain.GameInfo
 import org.postgresql.util.PGobject
 import org.springframework.stereotype.Component
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.Statement
-import java.util.concurrent.TimeUnit
 
 @Component
-class TicTacToeRepository(
-
-) {
+class TicTacToeRepository() {
 
     init {
         createTables()

@@ -20,7 +20,7 @@ class GameErrorHandler {
 
     @ExceptionHandler(GameError::class)
     fun handler(exception: GameError): ResponseEntity<*> {
-        return when(exception) {
+        return when (exception) {
             is GameError.HasNotStartedYet -> ErrorResponse.response(
                 400,
                 ErrorResponse.Type.GAME_NOT_STARTED_YET,
@@ -72,5 +72,4 @@ class GameErrorHandler {
             )
         }
     }
-
 }

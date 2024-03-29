@@ -57,8 +57,9 @@ class TicTacToeService(
      */
     fun relisten(player: String, id: Int): SseEmitter {
         val game = ticTacToeRepository.getGame(id)
-        if (!game.isPlayerOfGame(player))
+        if (!game.isPlayerOfGame(player)) {
             throw GameError.NotYourGame()
+        }
         return listenAndInitialNotify(id, game)
     }
 

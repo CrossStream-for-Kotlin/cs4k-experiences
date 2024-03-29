@@ -7,7 +7,6 @@ import com.zaxxer.hikari.HikariDataSource
 import cs4k.prototype.broker.BrokerException.BrokerTurnOffException
 import org.postgresql.PGConnection
 import org.slf4j.LoggerFactory
-import org.springframework.core.env.Environment
 import org.springframework.stereotype.Component
 import java.sql.Connection
 import java.util.UUID
@@ -267,7 +266,7 @@ class Broker {
                         message varchar(512), 
                         is_last boolean default false
                     );
-                """.trimIndent()
+                        """.trimIndent()
                     )
                 }
             }

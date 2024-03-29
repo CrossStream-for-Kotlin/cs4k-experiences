@@ -5,7 +5,7 @@ import org.springframework.http.ResponseEntity
 import java.net.URI
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
-class ErrorResponse (
+class ErrorResponse(
     val type: URI,
     val title: String? = null,
     val detail: String? = null,
@@ -58,5 +58,4 @@ class ErrorResponse (
         const val MOVE_NOT_VALID = "The position given is invalid."
         const val ALREADY_OCCUPIED = "The position given is already occupied."
     }
-
 }

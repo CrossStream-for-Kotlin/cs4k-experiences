@@ -8,7 +8,7 @@ package cs4k.prototype.broker
  */
 class Retry(
     private val maxRetries: Int = 3,
-    private val waitTimeMillis: Long = 1000,
+    private val waitTimeMillis: Long = 1000
 ) {
     /**
      * Execute an action with retry mechanism.
