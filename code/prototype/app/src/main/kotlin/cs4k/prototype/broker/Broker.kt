@@ -18,16 +18,18 @@ class Broker {
     // Channel to listen for notifications.
     private val channel = "share_channel"
 
-    // Map that associates a topic with a list of subscribers.
+    // Map that associates topics with lists of subscribers.
     private val associatedSubscribers = AssociatedSubscribers()
 
-    // Connection pool.
-    private var dataSource: HikariDataSource = createConnectionPool()
+    // Executor.
+    private val executor = Executor()
 
-    private val retry = Retry()
+    // Connection pool.
+    private val dataSource: HikariDataSource = executor.executeWithRetry {
+        createConnectionPool()
+    }
 
     init {
-
         // Create the events table if it does not exist.
         createEventsTable()
 
@@ -47,7 +49,7 @@ class Broker {
      * @return the callback to be called when unsubscribing.
      * @throws BrokerTurnOffException if the broker is turned off.
      */
-    fun subscribe(topic: String, handler: (event: Event.DataEvent) -> Unit): () -> Unit {
+    fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
         if (dataSource.isClosed) throw BrokerTurnOffException()
 
         val subscriber = Subscriber(
@@ -57,9 +59,7 @@ class Broker {
         associatedSubscribers.addToKey(topic, subscriber)
         logger.info("new subscriber topic '{}' id '{}", topic, subscriber.id)
 
-        val event = getLastEvent(topic)
-
-        if (event is Event.DataEvent) handler(event)
+        getLastEvent(topic)?.let { event -> handler(event) }
 
         return { unsubscribe(topic, subscriber) }
     }
@@ -105,7 +105,7 @@ class Broker {
      * If a new notification arrives, create an event and call the handler of the associated subscribers.
      */
     private fun waitForNotification() {
-        retry.executeWithRetry("Connection Failed: wait for notifications.") {
+        executor.executeWithRetry("Connection Failed: wait for notifications.") {
             dataSource.connection.use { conn ->
                 val pgConnection = conn.unwrap(PGConnection::class.java)
 
@@ -128,20 +128,20 @@ class Broker {
      * @param event the event to serialize.
      * @return the resulting JSON string.
      */
-    private fun serialize(event: Event.DataEvent) = objectMapper.writeValueAsString(event)
+    private fun serialize(event: Event) = objectMapper.writeValueAsString(event)
 
     /**
      * Deserialize a JSON string to event.
      * @param payload the JSON string to deserialize.
      * @return the resulting event.
      */
-    private fun deserialize(payload: String) = objectMapper.readValue(payload, Event.DataEvent::class.java)
+    private fun deserialize(payload: String) = objectMapper.readValue(payload, Event::class.java)
 
     /**
      * Listen for notifications.
      */
     private fun listen() {
-        retry.executeWithRetry("Connection Failed: listen for notifications.") {
+        executor.executeWithRetry("Connection Failed: listen for notifications.") {
             dataSource.connection.use { conn ->
                 conn.createStatement().use { stm ->
                     stm.execute("listen $channel;")
@@ -155,7 +155,7 @@ class Broker {
      * UnListen for notifications.
      */
     private fun unListen() {
-        retry.executeWithRetry("Connection Failed: unListen for notifications.") {
+        executor.executeWithRetry("Connection Failed: unListen for notifications.") {
             dataSource.connection.use { conn ->
                 conn.createStatement().use { stm ->
                     stm.execute("unListen $channel;")
@@ -172,12 +172,12 @@ class Broker {
      * @param isLastMessage Boolean indicates if the message is the last one.
      */
     private fun notify(topic: String, message: String, isLastMessage: Boolean) {
-        retry.executeWithRetry("Connection Failed: notify topic.") {
+        executor.executeWithRetry("Connection Failed: notify topic.") {
             dataSource.connection.use { conn ->
                 conn.autoCommit = false
                 // conn.transactionIsolation = Connection.TRANSACTION_SERIALIZABLE
 
-                val event = Event.DataEvent(
+                val event = Event(
                     topic = topic,
                     id = getEventIdAndUpdateHistory(conn, topic, message, isLastMessage),
                     message = message,
@@ -205,21 +205,21 @@ class Broker {
      * If the topic does not exist, return null.
      * @param topic String
      */
-    private fun getLastEvent(topic: String): Event =
-        retry.executeWithRetry("Connection Failed: get last event.") {
+    private fun getLastEvent(topic: String): Event? =
+        executor.executeWithRetry("Connection Failed: get last event.") {
             dataSource.connection.use { conn ->
                 conn.prepareStatement("select id, message, is_last from events where topic = ? for share;").use { stm ->
                     stm.setString(1, topic)
                     val rs = stm.executeQuery()
                     return@executeWithRetry if (rs.next()) {
-                        Event.DataEvent(
+                        Event(
                             topic = topic,
                             id = rs.getLong("id"),
                             message = rs.getString("message"),
                             isLast = rs.getBoolean("is_last")
                         )
                     } else {
-                        Event.NoEvent
+                        null
                     }
                 }
             }
@@ -257,7 +257,7 @@ class Broker {
      * Create the events table if it does not exist.
      */
     private fun createEventsTable() {
-        retry.executeWithRetry("Connection Failed: create events table.") {
+        executor.executeWithRetry("Connection Failed: create events table.") {
             dataSource.connection.use { conn ->
                 conn.createStatement().use { stm ->
                     stm.execute(
@@ -282,20 +282,15 @@ class Broker {
         // ObjectMapper instance for serializing and deserializing JSON with Kotlin support.
         private val objectMapper = ObjectMapper().registerModules(KotlinModule.Builder().build())
 
-        // Retry mechanism.
-        private val retry = Retry()
-
         /**
-         * Create a connection to the database.
+         * Create a connection poll.
+         * @return HikariDataSource instance.
+         * @see [HikariCP](https://github.com/brettwooldridge/HikariCP)
          */
         private fun createConnectionPool(): HikariDataSource {
-            val config = HikariConfig()
-            val dbUrl = System.getenv("DB_URL")
-                ?: throw IllegalAccessException("No connection URL given - define DB_URL environment variable")
-            return retry.executeWithRetry("Failed to stablish connection.") {
-                config.jdbcUrl = dbUrl
-                HikariDataSource(config)
-            }
+            val hikariConfig = HikariConfig()
+            hikariConfig.jdbcUrl = Environment.getDbUrl()
+            return HikariDataSource(hikariConfig)
         }
     }
 }

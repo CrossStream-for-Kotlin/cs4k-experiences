@@ -172,7 +172,7 @@ class BrokerTests {
         val message = newRandomMessage()
         val messages = List(NUMBER_OF_MESSAGES) { message }
 
-        val eventsReceived = ConcurrentLinkedQueue<Event.DataEvent>()
+        val eventsReceived = ConcurrentLinkedQueue<Event>()
         val latch = CountDownLatch(NUMBER_OF_MESSAGES)
 
         brokerInstances.first().subscribe(
@@ -206,7 +206,7 @@ class BrokerTests {
         val topic = newRandomTopic()
         val messages = List(NUMBER_OF_MESSAGES) { newRandomMessage() }
 
-        val eventsReceived = ConcurrentLinkedQueue<Event.DataEvent>()
+        val eventsReceived = ConcurrentLinkedQueue<Event>()
         val latch = CountDownLatch(NUMBER_OF_SUBSCRIBERS * NUMBER_OF_MESSAGES)
 
         repeat(NUMBER_OF_SUBSCRIBERS) {
@@ -246,7 +246,7 @@ class BrokerTests {
             newRandomTopic() to List(NUMBER_OF_MESSAGES) { newRandomMessage() }
         }
 
-        val eventsReceived = ConcurrentLinkedQueue<Event.DataEvent>()
+        val eventsReceived = ConcurrentLinkedQueue<Event>()
         val latch = CountDownLatch(NUMBER_OF_TOPICS * NUMBER_OF_SUBSCRIBERS * NUMBER_OF_MESSAGES)
 
         // Act
@@ -389,7 +389,7 @@ class BrokerTests {
 
         val threads = ConcurrentLinkedQueue<Thread>()
         val errors = ConcurrentLinkedQueue<Exception>()
-        val eventsReceived = ConcurrentLinkedQueue<Event.DataEvent>()
+        val eventsReceived = ConcurrentLinkedQueue<Event>()
         val latch = CountDownLatch(NUMBER_OF_SUBSCRIBERS * NUMBER_OF_MESSAGES * NUMBER_OF_TOPICS)
 
         topics.forEach { topic ->
@@ -441,7 +441,7 @@ class BrokerTests {
 
         val threads = ConcurrentLinkedQueue<Thread>()
         val errors = ConcurrentLinkedQueue<Exception>()
-        val eventsReceived = ConcurrentLinkedQueue<Event.DataEvent>()
+        val eventsReceived = ConcurrentLinkedQueue<Event>()
         val latch = CountDownLatch(NUMBER_OF_TOPICS)
 
         // Act

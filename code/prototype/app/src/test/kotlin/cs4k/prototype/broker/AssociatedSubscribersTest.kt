@@ -1,7 +1,5 @@
-package cs4k.prototype
+package cs4k.prototype.broker
 
-import cs4k.prototype.broker.AssociatedSubscribers
-import cs4k.prototype.broker.Subscriber
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import java.util.*
