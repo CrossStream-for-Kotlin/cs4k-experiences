@@ -7,9 +7,14 @@ package cs4k.prototype.broker
  * @param message the message of the event.
  * @param isLast if the event is the last one.
  */
-data class Event(
-    val topic: String,
-    val id: Long,
-    val message: String,
-    val isLast: Boolean = false
-)
+sealed class Event() {
+
+    object NoEvent : Event()
+
+    data class DataEvent(
+        val topic: String,
+        val id: Long,
+        val message: String,
+        val isLast: Boolean = false
+    ) : Event()
+}

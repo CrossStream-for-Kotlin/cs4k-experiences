@@ -5,7 +5,6 @@ import com.fasterxml.jackson.module.kotlin.KotlinModule
 import cs4k.prototype.domain.Game
 import cs4k.prototype.domain.GameInfo
 import cs4k.prototype.http.models.input.PlayInputModel
-import cs4k.prototype.http.models.input.RelistenInputModel
 import cs4k.prototype.http.models.input.StartInputModel
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
@@ -40,7 +39,7 @@ class PrototypeTTCTests {
             .block(Duration.ofSeconds(10))
             ?.first() ?: Assertions.fail("Message not received.")
 
-        val gameAReceived = eventAReceived.data() as GameInfo
+        val gameAReceived = objectMapper.convertValue(eventAReceived.data(), GameInfo::class.java)
 
         assertEquals(userA, gameAReceived.game.xPlayer)
         assertEquals(Game.State.WAITING, gameAReceived.game.state)
@@ -53,11 +52,42 @@ class PrototypeTTCTests {
             .block(Duration.ofSeconds(10))
             ?.first() ?: Assertions.fail("Message not received.")
 
-        val gameBReceived = eventBReceived.data() as GameInfo
+        val gameBReceived = objectMapper.convertValue(eventBReceived.data(), GameInfo::class.java)
 
         assertEquals(userA, gameBReceived.game.xPlayer)
         assertEquals(userB, gameBReceived.game.oPlayer)
         assertEquals(Game.State.X_TURN, gameBReceived.game.state)
+    }
+
+    @Test
+    fun `userA able to relisten`() {
+        val clientA = newClient(port)
+        val userA = newRandomUser()
+        val clientB = newClient(port)
+        val userB = newRandomUser()
+
+        start(clientB, StartInputModel(userB))
+        val emitterA = start(clientA, StartInputModel(userA))
+
+        val eventAReceived = emitterA
+            .take(1)
+            .collectList()
+            .block(Duration.ofSeconds(10))
+            ?.first() ?: Assertions.fail("Message not received.")
+
+        val gameAReceived = objectMapper.convertValue(eventAReceived.data(), GameInfo::class.java)
+
+        val emitterA2 = relisten(clientA, gameAReceived.gameId, userA)
+
+        val eventAReceived2 = emitterA2
+            .take(1)
+            .collectList()
+            .block(Duration.ofSeconds(10))
+            ?.first() ?: Assertions.fail("Message not received.")
+
+        val gameAReceived2 = objectMapper.convertValue(eventAReceived2.data(), GameInfo::class.java)
+
+        assertEquals(gameAReceived, gameAReceived2)
     }
 
     companion object {
@@ -93,10 +123,10 @@ class PrototypeTTCTests {
                 .expectStatus().isOk
         }
 
-        private fun relisten(client: WebTestClient, id: Int, body: RelistenInputModel) =
+        private fun relisten(client: WebTestClient, id: Int, player: String) =
             client
                 .get()
-                .uri("/game/$id")
+                .uri("/game/$id?player=$player")
                 .exchange()
                 .expectStatus().isOk
                 .expectHeader().contentType(MediaType.TEXT_EVENT_STREAM)

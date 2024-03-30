@@ -1,6 +1,6 @@
 package cs4k.prototype.domain
 
-class GameInfo(
+data class GameInfo(
     val gameId: Int,
     val game: Game
 )

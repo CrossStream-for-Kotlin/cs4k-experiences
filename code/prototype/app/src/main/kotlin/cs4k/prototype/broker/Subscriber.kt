@@ -9,5 +9,5 @@ import java.util.UUID
  */
 data class Subscriber(
     val id: UUID,
-    val handler: (event: Event) -> Unit
+    val handler: (event: Event.DataEvent) -> Unit
 )

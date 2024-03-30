@@ -47,7 +47,8 @@ class TicTacToeService(
         val game = ticTacToeRepository.getGame(id)
         val newGame = game.play(row, column, player)
         ticTacToeRepository.updateGame(id, newGame)
-        notifyGameState(id, newGame)
+        val gameInfo = GameInfo(id, newGame)
+        notifyGameState(gameInfo)
     }
 
     /**
@@ -71,16 +72,24 @@ class TicTacToeService(
     private fun listenAndInitialNotify(gameId: Int, game: Game): SseEmitter {
         val sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(5))
 
-        val unsubscribeCallback = broker.subscribe(
-            topic = gameId.toString(),
-            handler = { event ->
-                val sseEmitterEvent = SseEmitter.event()
-                    .name(event.topic)
-                    .id(event.id.toString())
-                    .data("event: ${event.topic} - id: ${event.id} - data: ${event.message}")
-                sseEmitter.send(sseEmitterEvent)
+        val gameInfo = GameInfo(gameId, game)
 
-                if (event.isLast) sseEmitter.complete()
+        val unsubscribeCallback = broker.subscribe(
+            topic = "gameId${gameInfo.gameId}",
+            handler = { event ->
+                try {
+                    SseEvent.Message(
+                        name = event.topic,
+                        id = event.id,
+                        data = gameInfo
+                    ).writeTo(
+                        sseEmitter
+                    )
+
+                    if (event.isLast) sseEmitter.complete()
+                } catch (ex: Exception) {
+                    sseEmitter.completeWithError(ex)
+                }
             }
         )
         sseEmitter.onCompletion {
@@ -90,7 +99,7 @@ class TicTacToeService(
             unsubscribeCallback()
         }
 
-        notifyGameState(gameId, game)
+        notifyGameState(gameInfo)
 
         return sseEmitter
     }
@@ -100,10 +109,9 @@ class TicTacToeService(
      * @param gameId the id of the game.
      * @param game the game to be played.
      */
-    private fun notifyGameState(gameId: Int, game: Game) {
-        val gameInfo = GameInfo(gameId, game)
+    private fun notifyGameState(gameInfo: GameInfo) {
         broker.publish(
-            topic = "gameId$gameId",
+            topic = "gameId${gameInfo.gameId}",
             payload = gameInfo
         )
     }

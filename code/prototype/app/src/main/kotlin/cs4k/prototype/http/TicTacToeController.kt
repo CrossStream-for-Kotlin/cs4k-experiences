@@ -1,13 +1,13 @@
 package cs4k.prototype.http
 
 import cs4k.prototype.http.models.input.PlayInputModel
-import cs4k.prototype.http.models.input.RelistenInputModel
 import cs4k.prototype.http.models.input.StartInputModel
 import cs4k.prototype.services.TicTacToeService
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 
@@ -27,7 +27,7 @@ class TicTacToeController(
     }
 
     @GetMapping(Uris.TicTacToe.RELISTEN)
-    fun relisten(@RequestBody relistenInputModel: RelistenInputModel, @PathVariable id: Int): SseEmitter {
-        return ticTacToeService.relisten(relistenInputModel.player, id)
+    fun relisten(@RequestParam player: String, @PathVariable id: Int): SseEmitter {
+        return ticTacToeService.relisten(player, id)
     }
 }

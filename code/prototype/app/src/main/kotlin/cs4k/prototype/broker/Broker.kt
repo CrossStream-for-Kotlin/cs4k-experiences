@@ -47,7 +47,7 @@ class Broker {
      * @return the callback to be called when unsubscribing.
      * @throws BrokerTurnOffException if the broker is turned off.
      */
-    fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
+    fun subscribe(topic: String, handler: (event: Event.DataEvent) -> Unit): () -> Unit {
         if (dataSource.isClosed) throw BrokerTurnOffException()
 
         val subscriber = Subscriber(
@@ -57,7 +57,9 @@ class Broker {
         associatedSubscribers.addToKey(topic, subscriber)
         logger.info("new subscriber topic '{}' id '{}", topic, subscriber.id)
 
-        getLastEvent(topic)?.let { event -> handler(event) }
+        val event = getLastEvent(topic)
+
+        if (event is Event.DataEvent) handler(event)
 
         return { unsubscribe(topic, subscriber) }
     }
@@ -126,14 +128,14 @@ class Broker {
      * @param event the event to serialize.
      * @return the resulting JSON string.
      */
-    private fun serialize(event: Event) = objectMapper.writeValueAsString(event)
+    private fun serialize(event: Event.DataEvent) = objectMapper.writeValueAsString(event)
 
     /**
      * Deserialize a JSON string to event.
      * @param payload the JSON string to deserialize.
      * @return the resulting event.
      */
-    private fun deserialize(payload: String) = objectMapper.readValue(payload, Event::class.java)
+    private fun deserialize(payload: String) = objectMapper.readValue(payload, Event.DataEvent::class.java)
 
     /**
      * Listen for notifications.
@@ -175,7 +177,7 @@ class Broker {
                 conn.autoCommit = false
                 // conn.transactionIsolation = Connection.TRANSACTION_SERIALIZABLE
 
-                val event = Event(
+                val event = Event.DataEvent(
                     topic = topic,
                     id = getEventIdAndUpdateHistory(conn, topic, message, isLastMessage),
                     message = message,
@@ -203,21 +205,21 @@ class Broker {
      * If the topic does not exist, return null.
      * @param topic String
      */
-    private fun getLastEvent(topic: String): Event? =
+    private fun getLastEvent(topic: String): Event =
         retry.executeWithRetry("Connection Failed: get last event.") {
             dataSource.connection.use { conn ->
                 conn.prepareStatement("select id, message, is_last from events where topic = ? for share;").use { stm ->
                     stm.setString(1, topic)
                     val rs = stm.executeQuery()
                     return@executeWithRetry if (rs.next()) {
-                        Event(
+                        Event.DataEvent(
                             topic = topic,
                             id = rs.getLong("id"),
                             message = rs.getString("message"),
                             isLast = rs.getBoolean("is_last")
                         )
                     } else {
-                        null
+                        Event.NoEvent
                     }
                 }
             }
