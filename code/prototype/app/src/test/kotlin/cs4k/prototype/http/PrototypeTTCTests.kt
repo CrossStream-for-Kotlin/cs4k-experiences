@@ -77,7 +77,7 @@ class PrototypeTTCTests {
 
         val gameAReceived = objectMapper.convertValue(eventAReceived.data(), GameInfo::class.java)
 
-        val emitterA2 = relisten(clientA, gameAReceived.gameId, userA)
+        val emitterA2 = relisten(clientA, gameAReceived.gameId)
 
         val eventAReceived2 = emitterA2
             .take(1)
@@ -123,10 +123,10 @@ class PrototypeTTCTests {
                 .expectStatus().isOk
         }
 
-        private fun relisten(client: WebTestClient, id: Int, player: String) =
+        private fun relisten(client: WebTestClient, id: Int) =
             client
                 .get()
-                .uri("/game/$id?player=$player")
+                .uri("/game/$id")
                 .exchange()
                 .expectStatus().isOk
                 .expectHeader().contentType(MediaType.TEXT_EVENT_STREAM)

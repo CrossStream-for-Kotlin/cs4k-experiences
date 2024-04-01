@@ -27,7 +27,7 @@ class TicTacToeController(
     }
 
     @GetMapping(Uris.TicTacToe.RELISTEN)
-    fun relisten(@RequestParam player: String, @PathVariable id: Int): SseEmitter {
-        return ticTacToeService.relisten(player, id)
+    fun relisten(@PathVariable id: Int): SseEmitter {
+        return ticTacToeService.relisten(id)
     }
 }
