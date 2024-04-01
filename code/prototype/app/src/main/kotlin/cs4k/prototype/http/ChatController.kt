@@ -15,9 +15,8 @@ class ChatController(
 ) {
 
     @GetMapping(Uris.Chat.LISTEN)
-    fun listen(@RequestParam group: String?): SseEmitter {
-        return chatService.newListener(group)
-    }
+    fun listen(@RequestParam group: String?): SseEmitter =
+        chatService.newListener(group)
 
     @PostMapping(Uris.Chat.SEND)
     fun send(@RequestParam group: String?, @RequestBody body: MessageInputModel) {

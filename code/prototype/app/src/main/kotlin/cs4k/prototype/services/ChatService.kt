@@ -13,17 +13,17 @@ import java.util.concurrent.TimeUnit
 @Component
 class ChatService(val broker: Broker) {
 
+    private val generalGroup = "general"
+
     @PreDestroy
-    fun clanUp() {
+    private fun clanUp() {
         broker.shutdown()
     }
 
-    private val generalGroup = "general"
-
     /**
      * Join a chat group.
-     * @param group the optional name of the group.
-     * @return the Spring SSEEmitter.
+     * @param group The optional name of the group.
+     * @return The Spring SSEEmitter.
      */
     fun newListener(group: String?): SseEmitter {
         val sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(30))
@@ -31,10 +31,11 @@ class ChatService(val broker: Broker) {
             topic = group ?: generalGroup,
             handler = { event ->
                 try {
+                    val message = deserializeJsonToMessage(event.message)
                     SseEvent.Message(
                         name = event.topic,
                         id = event.id,
-                        data = MessageOutputModel(deserializeJsonToMessage(event.message).message)
+                        data = MessageOutputModel(message.message)
                     ).writeTo(
                         sseEmitter
                     )
@@ -58,8 +59,8 @@ class ChatService(val broker: Broker) {
 
     /**
      * Send a message to a group.
-     * @param group the optional name of the group.
-     * @param message message to send to the group.
+     * @param group The optional name of the group.
+     * @param message The message to send to the group.
      */
     fun sendMessage(group: String?, message: String) {
         broker.publish(
@@ -71,7 +72,10 @@ class ChatService(val broker: Broker) {
     companion object {
         private val objectMapper = ObjectMapper().registerModules(KotlinModule.Builder().build())
 
-        private fun serializeMessageToJson(message: Message) = objectMapper.writeValueAsString(message)
-        private fun deserializeJsonToMessage(message: String) = objectMapper.readValue(message, Message::class.java)
+        private fun serializeMessageToJson(message: Message) =
+            objectMapper.writeValueAsString(message)
+
+        private fun deserializeJsonToMessage(message: String) =
+            objectMapper.readValue(message, Message::class.java)
     }
 }

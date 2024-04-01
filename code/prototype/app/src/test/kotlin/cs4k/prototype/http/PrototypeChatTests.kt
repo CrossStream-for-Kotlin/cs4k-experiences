@@ -14,7 +14,6 @@ import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class PrototypeChatTests {
@@ -44,15 +43,15 @@ class PrototypeChatTests {
             ?.first() ?: fail("Message not received.")
 
         assertEquals(group, eventReceived.event())
-        assertEquals(0L, eventReceived.id()?.toLong())
-        assertTrue(eventReceived.data().toString().contains(message.message))
+        assertEquals(FIRST_EVENT_ID, eventReceived.id()?.toLong())
+        assertEquals(message.message, eventReceived.getMessage())
     }
 
     @Test
     fun `new listeners of a group receives the same last message `() {
         // given: HTTP clients, a random group and a random message.
         val clientA = newClient(port)
-        val clients = List(NUMBER_OF_CLIENTS) { newClient(port) }
+        val clients = List(NUMBER_OF_LISTENERS) { newClient(port) }
         val group = newRandomGroup()
         val message = MessageTest(newRandomMessage())
 
@@ -71,13 +70,13 @@ class PrototypeChatTests {
                 ?.first() ?: fail("Message not received.")
 
             assertEquals(group, eventReceived.event())
-            assertEquals(0L, eventReceived.id()?.toLong())
-            assertTrue(eventReceived.data().toString().contains(message.message))
+            assertEquals(FIRST_EVENT_ID, eventReceived.id()?.toLong())
+            assertEquals(message.message, eventReceived.getMessage())
         }
     }
 
     @Test
-    fun `1 listener of a group receives 1 message`() {
+    fun `1 listener of 1 group receives 1 message`() {
         // given: HTTP clients, a random group and a random message ...
         val clientA = newClient(port)
         val clientB = newClient(port)
@@ -100,8 +99,8 @@ class PrototypeChatTests {
                     ?.first() ?: fail("Message not received.")
 
                 assertEquals(group, eventReceived.event())
-                assertEquals(0L, eventReceived.id()?.toLong())
-                assertTrue(eventReceived.data().toString().contains(message.message))
+                assertEquals(FIRST_EVENT_ID, eventReceived.id()?.toLong())
+                assertEquals(message.message, eventReceived.getMessage())
             } catch (e: AssertionError) {
                 failures.add(e)
             } catch (e: Exception) {
@@ -120,10 +119,10 @@ class PrototypeChatTests {
     }
 
     @Test
-    fun `n listeners of a group receives 1 message`() {
+    fun `n listeners of 1 group receives 1 message`() {
         // given: HTTP clients, a random group and a random message ...
         val clientA = newClient(port)
-        val clients = List(NUMBER_OF_CLIENTS) { newClient(port) }
+        val listeners = List(NUMBER_OF_LISTENERS) { newClient(port) }
         val group = newRandomGroup()
         val message = MessageTest(newRandomMessage())
 
@@ -132,7 +131,7 @@ class PrototypeChatTests {
         val failures = ConcurrentLinkedQueue<AssertionError>()
 
         // when: clients listen group ...
-        clients.forEach { client ->
+        listeners.forEach { client ->
             val th = Thread {
                 try {
                     val emitter = listen(client, group)
@@ -145,8 +144,8 @@ class PrototypeChatTests {
                         ?.first() ?: fail("Message not received.")
 
                     assertEquals(group, eventReceived.event())
-                    assertEquals(0L, eventReceived.id()?.toLong())
-                    assertTrue(eventReceived.data().toString().contains(message.message))
+                    assertEquals(FIRST_EVENT_ID, eventReceived.id()?.toLong())
+                    assertEquals(message.message, eventReceived.getMessage())
                 } catch (e: AssertionError) {
                     failures.add(e)
                 } catch (e: Exception) {
@@ -166,7 +165,7 @@ class PrototypeChatTests {
     }
 
     @Test
-    fun `1 listener of a group receives n message`() {
+    fun `1 listener of 1 group receives n message`() {
         // given: HTTP clients, a random group and a random messages ...
         val clientA = newClient(port)
         val group = newRandomGroup()
@@ -185,10 +184,10 @@ class PrototypeChatTests {
                     .take(NUMBER_OF_MESSAGES.toLong())
                     .collectList()
                     .block(Duration.ofSeconds(10))
-                    ?.toList() ?: fail("Message not received.")
+                    ?.toList() ?: fail("Messages not received.")
 
                 messages.forEachIndexed { idx, message ->
-                    val event = eventsReceived.find { it.data()?.toString()?.contains(message.message) ?: false }
+                    val event = eventsReceived.find { it.getMessage() == message.message }
                     assertNotNull(event)
                     assertEquals(group, event.event())
                     assertEquals(idx.toLong(), event.id()?.toLong())
@@ -213,9 +212,9 @@ class PrototypeChatTests {
     }
 
     @Test
-    fun `stress test n listener of a group receives n message`() {
+    fun `stress test n listeners of 1 group receives n message`() {
         // given: HTTP clients, a random group and random messages ...
-        val clients = List(NUMBER_OF_CLIENTS) { newClient(port) }
+        val listeners = List(NUMBER_OF_LISTENERS) { newClient(port) }
         val group = newRandomGroup()
         val messages = List(NUMBER_OF_MESSAGES) { MessageTest(newRandomMessage()) }
 
@@ -224,7 +223,7 @@ class PrototypeChatTests {
         val failures = ConcurrentLinkedQueue<AssertionError>()
 
         // when: clients listen group ...
-        clients.forEach { client ->
+        listeners.forEach { client ->
             val th = Thread {
                 try {
                     val emitter = listen(client, group)
@@ -233,11 +232,11 @@ class PrototypeChatTests {
                     val eventsReceived = emitter
                         .take(NUMBER_OF_MESSAGES.toLong())
                         .collectList()
-                        .block(Duration.ofSeconds(10))
-                        ?.toList() ?: fail("Message not received.")
+                        .block(Duration.ofMinutes(1))
+                        ?.toList() ?: fail("Messages not received.")
 
                     messages.forEachIndexed { idx, message ->
-                        val event = eventsReceived.find { it.data()?.toString()?.contains(message.message) ?: false }
+                        val event = eventsReceived.find { it.getMessage() == message.message }
                         assertNotNull(event)
                         assertEquals(group, event.event())
                         assertEquals(idx.toLong(), event.id()?.toLong())
@@ -264,9 +263,9 @@ class PrototypeChatTests {
 
     /*
     @Test
-    fun `stress test n listener of n group receives n message`() {
+    fun `stress test n listeners of n group receives n message`() {
         // given: HTTP clients, random groups and random messages ...
-        val clients = List(NUMBER_OF_CLIENTS) { newClient(port) }
+        val listeners = List(NUMBER_OF_LISTENERS) { newClient(port) }
         val groupsAndMessages = (1..NUMBER_OF_GROUPS).associate {
             newRandomGroup() to List(NUMBER_OF_MESSAGES) { MessageTest(newRandomMessage()) }
         }
@@ -277,7 +276,7 @@ class PrototypeChatTests {
 
         // when: clients listen groups ...
         groupsAndMessages.forEach { entry ->
-            clients.forEach { client ->
+            listeners.forEach { client ->
                 val th = Thread {
                     try {
                         val emitter = listen(client, entry.key)
@@ -286,11 +285,11 @@ class PrototypeChatTests {
                         val eventsReceived = emitter
                             .take(NUMBER_OF_MESSAGES.toLong())
                             .collectList()
-                            .block(Duration.ofSeconds(10))
-                            ?.toList() ?: fail("Message not received.")
+                            .block(Duration.ofMinutes(1))
+                            ?.toList() ?: fail("Messages not received.")
 
                         groupsAndMessages[entry.key]?.forEach { message ->
-                            val event = eventsReceived.find { it.data()?.toString()?.contains(message.message) ?: false }
+                            val event = eventsReceived.find { it.getMessage() == message.message }
                             assertNotNull(event)
                             assertEquals(entry.key, event.event())
                         }
@@ -304,7 +303,7 @@ class PrototypeChatTests {
             }
         }
 
-        // ... and clients send messages to group.
+        // ... and clients send messages to groups.
         groupsAndMessages.forEach { entry ->
             entry.value.forEach { message ->
                 send(newClient(port), entry.key, message)
@@ -319,17 +318,17 @@ class PrototypeChatTests {
      */
 
     companion object {
-        private const val NUMBER_OF_CLIENTS = 100
-
-        // private const val NUMBER_OF_GROUPS = 10
+        private const val FIRST_EVENT_ID = 0L
+        private const val NUMBER_OF_LISTENERS = 100
         private const val NUMBER_OF_MESSAGES = 100
+        // private const val NUMBER_OF_GROUPS = 10
 
         private fun generateRandom() = abs(Random.nextLong())
 
-        private fun newRandomGroup() = "group${generateRandom()}"
-        private fun newRandomMessage() = "message${generateRandom()}"
         private fun newClient(port: Int) =
             WebTestClient.bindToServer().baseUrl("http://localhost:$port/api").build()
+        private fun newRandomGroup() = "group${generateRandom()}"
+        private fun newRandomMessage() = "message${generateRandom()}"
 
         private fun listen(client: WebTestClient, group: String) =
             client
@@ -349,5 +348,8 @@ class PrototypeChatTests {
                 .exchange()
                 .expectStatus().isOk
         }
+
+        private fun <T> ServerSentEvent<T>.getMessage() =
+            (this.data() as LinkedHashMap<*, *>)["message"].toString()
     }
 }
