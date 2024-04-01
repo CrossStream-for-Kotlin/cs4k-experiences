@@ -3,13 +3,24 @@ package cs4k.prototype.broker
 /**
  * Represent [Broker] exceptions.
  */
-sealed class BrokerException(msg: String) : Exception(msg) {
+sealed class BrokerException(msg: String="") : Exception(msg) {
+
 
     /**
-     * Cannot invoke broker methods because the broker is turned off.
-     * Method [Broker.shutdown] already called.
+     * Exception indicating that the connection to the database couldn't be established.
      */
-    class BrokerTurnOffException(msg: String) : BrokerException(msg)
+    class BrokerDbConnectionException : BrokerException("Connection to the database could not be established")
+
+    /**
+     * Exception indicating that the broker lost connection to the database.
+     */
+    class BrokerDbLostConnectionException : BrokerException("Lost connection to the database")
+
+    /**
+     * Exception indicating that the broker is turned off.
+     * @param msg The message to show.
+     */
+    class BrokerTurnOffException(msg: String =" ") : BrokerException(msg)
 
     /**
      * Missing environment variable required by broker.

@@ -15,7 +15,7 @@ class Executor(
      * @return the result of the action.
      */
     fun <T> executeWithRetry(
-        exceptionMessage: String = "Failed to execute action with retry mechanism.",
+        exception: BrokerException,
         action: () -> T
     ): T {
         repeat(maxRetries) {
@@ -25,6 +25,6 @@ class Executor(
                 Thread.sleep(waitTimeMillis)
             }
         }
-        throw Exception(exceptionMessage)
+        throw exception
     }
 }

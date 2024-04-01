@@ -4,8 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
-import cs4k.prototype.broker.BrokerException.BrokerTurnOffException
-import cs4k.prototype.broker.BrokerException.UnexpectedBrokerException
+import cs4k.prototype.broker.BrokerException.*
 import org.postgresql.PGConnection
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -26,7 +25,7 @@ class Broker {
     private val executor = Executor()
 
     // Connection pool.
-    private val connectionPool = executor.executeWithRetry {
+    private val connectionPool = executor.executeWithRetry(BrokerDbConnectionException()) {
         createConnectionPool()
     }
 
@@ -105,7 +104,7 @@ class Broker {
      * If a new notification arrives, create an event and call the handler of the associated subscribers.
      */
     private fun waitForNotification() {
-        executor.executeWithRetry("Connection Failed: wait for notifications.") {
+        executor.executeWithRetry(BrokerDbLostConnectionException()) {
             connectionPool.connection.use { conn ->
                 val pgConnection = conn.unwrap(PGConnection::class.java)
 
@@ -142,7 +141,7 @@ class Broker {
      * Listen for notifications.
      */
     private fun listen() {
-        executor.executeWithRetry("Connection Failed: listen for notifications.") {
+        executor.executeWithRetry( BrokerDbLostConnectionException()) {
             connectionPool.connection.use { conn ->
                 conn.createStatement().use { stm ->
                     stm.execute("listen $channel;")
@@ -156,7 +155,7 @@ class Broker {
      * UnListen for notifications.
      */
     private fun unListen() {
-        executor.executeWithRetry("Connection Failed: unListen for notifications.") {
+        executor.executeWithRetry( BrokerDbLostConnectionException()) {
             connectionPool.connection.use { conn ->
                 conn.createStatement().use { stm ->
                     stm.execute("unListen $channel;")
@@ -173,7 +172,7 @@ class Broker {
      * @param isLastMessage Indicates if the message is the last one.
      */
     private fun notify(topic: String, message: String, isLastMessage: Boolean) {
-        executor.executeWithRetry("Connection Failed: notify topic.") {
+        executor.executeWithRetry(BrokerDbLostConnectionException()) {
             connectionPool.connection.use { conn ->
                 conn.autoCommit = false
 
@@ -183,6 +182,7 @@ class Broker {
                     message = message,
                     isLast = isLastMessage
                 )
+
                 conn.prepareStatement("select pg_notify(?, ?)").use { stm ->
                     stm.setString(1, channel)
                     stm.setString(2, serialize(event))
@@ -203,7 +203,7 @@ class Broker {
      * @return The last event of the topic, or null if the event does not exist yet.
      */
     private fun getLastEvent(topic: String): Event? =
-        executor.executeWithRetry("Connection Failed: get last event.") {
+        executor.executeWithRetry(BrokerDbLostConnectionException()) {
             connectionPool.connection.use { conn ->
                 conn.prepareStatement("select id, message, is_last from events where topic = ? for share;").use { stm ->
                     stm.setString(1, topic)
@@ -255,7 +255,7 @@ class Broker {
      * Create the events table if it does not exist.
      */
     private fun createEventsTable() {
-        executor.executeWithRetry("Connection Failed: create events table.") {
+        executor.executeWithRetry(BrokerDbLostConnectionException()) {
             connectionPool.connection.use { conn ->
                 conn.createStatement().use { stm ->
                     stm.execute(
