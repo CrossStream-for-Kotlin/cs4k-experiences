@@ -2,6 +2,7 @@ package cs4k.prototype.broker
 
 import cs4k.prototype.broker.BrokerException.BrokerTurnOffException
 import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.RepeatedTest
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -27,7 +28,8 @@ class BrokerTests {
 
         brokerInstances.first().publish(
             topic = topic,
-            message = message
+            message = message,
+            isLastMessage = false
         )
 
         // Act
@@ -36,7 +38,7 @@ class BrokerTests {
             handler = { event ->
                 // Assert
                 assertEquals(topic, event.topic)
-                assertEquals(0, event.id)
+                assertEquals(FIRST_EVENT_ID, event.id)
                 assertEquals(message, event.message)
                 assertFalse(event.isLast)
             }
@@ -44,14 +46,15 @@ class BrokerTests {
     }
 
     @Test
-    fun `new subscribers in 1 topic should receive the same last message even if it is through another broker instance`() {
+    fun `new subscribers in 1 topic should receive the same last message even with several broker instances involved`() {
         // Arrange
         val topic = newRandomTopic()
         val message = newRandomMessage()
 
         brokerInstances.first().publish(
             topic = topic,
-            message = message
+            message = message,
+            isLastMessage = false
         )
 
         // Act
@@ -61,7 +64,7 @@ class BrokerTests {
                 handler = { event ->
                     // Assert
                     assertEquals(topic, event.topic)
-                    assertEquals(0, event.id)
+                    assertEquals(FIRST_EVENT_ID, event.id)
                     assertEquals(message, event.message)
                     assertFalse(event.isLast)
                 }
@@ -87,7 +90,7 @@ class BrokerTests {
             handler = { event ->
                 // Assert
                 assertEquals(topic, event.topic)
-                assertEquals(0, event.id)
+                assertEquals(FIRST_EVENT_ID, event.id)
                 assertEquals(message, event.message)
                 assertTrue(event.isLast)
             }
@@ -95,7 +98,7 @@ class BrokerTests {
     }
 
     @Test
-    fun `new subscribers in 1 finished topic should receive the same last message even if it is through another broker instance`() {
+    fun `new subscribers in 1 finished topic should receive the same last message even with several broker instances involved`() {
         // Arrange
         val topic = newRandomTopic()
         val message = newRandomMessage()
@@ -113,7 +116,7 @@ class BrokerTests {
                 handler = { event ->
                     // Assert
                     assertEquals(topic, event.topic)
-                    assertEquals(0, event.id)
+                    assertEquals(FIRST_EVENT_ID, event.id)
                     assertEquals(message, event.message)
                     assertTrue(event.isLast)
                 }
@@ -132,14 +135,17 @@ class BrokerTests {
             handler = { event ->
                 // Assert
                 assertEquals(topic, event.topic)
-                assertEquals(0, event.id)
+                assertEquals(FIRST_EVENT_ID, event.id)
                 assertEquals(message, event.message)
                 assertFalse(event.isLast)
             }
         )
 
         // Act
-        brokerInstances.first().publish(topic, message)
+        brokerInstances.first().publish(
+            topic = topic,
+            message = message
+        )
     }
 
     @Test
@@ -154,7 +160,7 @@ class BrokerTests {
                 handler = { event ->
                     // Assert
                     assertEquals(topic, event.topic)
-                    assertEquals(0, event.id)
+                    assertEquals(FIRST_EVENT_ID, event.id)
                     assertEquals(message, event.message)
                     assertFalse(event.isLast)
                 }
@@ -162,18 +168,20 @@ class BrokerTests {
         }
 
         // Act
-        brokerInstances.first().publish(topic, message)
+        brokerInstances.first().publish(
+            topic = topic,
+            message = message
+        )
     }
 
     @Test
     fun `1 subscriber in 1 topic receiving n messages with several broker instances involved`() {
         // Arrange
         val topic = newRandomTopic()
-        val message = newRandomMessage()
-        val messages = List(NUMBER_OF_MESSAGES) { message }
+        val messages = List(NUMBER_OF_MESSAGES) { newRandomMessage() }
 
-        val eventsReceived = ConcurrentLinkedQueue<Event>()
         val latch = CountDownLatch(NUMBER_OF_MESSAGES)
+        val eventsReceived = ConcurrentLinkedQueue<Event>()
 
         brokerInstances.first().subscribe(
             topic = topic,
@@ -185,12 +193,15 @@ class BrokerTests {
 
         // Act
         messages.forEach { msg ->
-            getRandomBrokerInstance().publish(topic, msg)
+            getRandomBrokerInstance().publish(
+                topic = topic,
+                message = msg
+            )
         }
 
+        // Assert
         latch.await(1, TimeUnit.MINUTES)
 
-        // Assert
         assertEquals(NUMBER_OF_MESSAGES, eventsReceived.size)
         eventsReceived.forEachIndexed { idx, event ->
             assertEquals(topic, event.topic)
@@ -206,8 +217,8 @@ class BrokerTests {
         val topic = newRandomTopic()
         val messages = List(NUMBER_OF_MESSAGES) { newRandomMessage() }
 
-        val eventsReceived = ConcurrentLinkedQueue<Event>()
         val latch = CountDownLatch(NUMBER_OF_SUBSCRIBERS * NUMBER_OF_MESSAGES)
+        val eventsReceived = ConcurrentLinkedQueue<Event>()
 
         repeat(NUMBER_OF_SUBSCRIBERS) {
             getRandomBrokerInstance().subscribe(
@@ -221,12 +232,15 @@ class BrokerTests {
 
         // Act
         messages.forEach { message ->
-            getRandomBrokerInstance().publish(topic, message)
+            getRandomBrokerInstance().publish(
+                topic = topic,
+                message = message
+            )
         }
 
+        // Assert
         latch.await(1, TimeUnit.MINUTES)
 
-        // Assert
         assertEquals(NUMBER_OF_SUBSCRIBERS * NUMBER_OF_MESSAGES, eventsReceived.size)
 
         val eventsReceivedSet = eventsReceived.toSet()
@@ -246,8 +260,8 @@ class BrokerTests {
             newRandomTopic() to List(NUMBER_OF_MESSAGES) { newRandomMessage() }
         }
 
-        val eventsReceived = ConcurrentLinkedQueue<Event>()
         val latch = CountDownLatch(NUMBER_OF_TOPICS * NUMBER_OF_SUBSCRIBERS * NUMBER_OF_MESSAGES)
+        val eventsReceived = ConcurrentLinkedQueue<Event>()
 
         // Act
         topicsAndMessages.forEach { entry ->
@@ -271,9 +285,9 @@ class BrokerTests {
             }
         }
 
+        // Assert
         latch.await(1, TimeUnit.MINUTES)
 
-        // Assert
         assertEquals(NUMBER_OF_TOPICS * NUMBER_OF_SUBSCRIBERS * NUMBER_OF_MESSAGES, eventsReceived.size)
 
         eventsReceived.forEach { event ->
@@ -299,7 +313,11 @@ class BrokerTests {
 
         // Act
         unsubscribe()
-        brokerInstances.first().publish(topic, message)
+
+        brokerInstances.first().publish(
+            topic = topic,
+            message = message
+        )
 
         thread {
             Thread.sleep(4000)
@@ -325,7 +343,11 @@ class BrokerTests {
             }
             unsubscribe()
         }
-        brokerInstances.first().publish(topic, message)
+
+        brokerInstances.first().publish(
+            topic = topic,
+            message = message
+        )
 
         thread {
             Thread.sleep(4000)
@@ -335,15 +357,16 @@ class BrokerTests {
         latch.await(1, TimeUnit.MINUTES)
     }
 
-    @Test
-    fun `stress test with simultaneous publication of n messages to 1 topic`() {
+    @RepeatedTest(3)
+    fun `stress test with simultaneous publication of n messages to 1 topic with several broker instances involved`() {
         // Arrange
         val topic = newRandomTopic()
+        val messages = List(NUMBER_OF_MESSAGES) { newRandomMessage() }
 
+        val latch = CountDownLatch(NUMBER_OF_SUBSCRIBERS * NUMBER_OF_MESSAGES)
         val threads = ConcurrentLinkedQueue<Thread>()
         val errors = ConcurrentLinkedQueue<Exception>()
         val eventsReceived = ConcurrentLinkedQueue<Event>()
-        val latch = CountDownLatch(NUMBER_OF_SUBSCRIBERS * NUMBER_OF_MESSAGES)
 
         repeat(NUMBER_OF_SUBSCRIBERS) {
             getRandomBrokerInstance().subscribe(
@@ -356,12 +379,12 @@ class BrokerTests {
         }
 
         // Act
-        repeat(NUMBER_OF_MESSAGES) {
+        messages.forEach { message ->
             val th = Thread {
                 try {
                     getRandomBrokerInstance().publish(
                         topic = topic,
-                        message = newRandomMessage()
+                        message = message
                     )
                 } catch (e: Exception) {
                     errors.add(e)
@@ -371,31 +394,36 @@ class BrokerTests {
         }
         threads.forEach { it.join() }
 
+        // Assert
         latch.await(5, TimeUnit.MINUTES)
 
-        // Assert
         assertEquals(NUMBER_OF_SUBSCRIBERS * NUMBER_OF_MESSAGES, eventsReceived.size)
 
-        val eventsReceivedSet = eventsReceived.toSet()
+        val eventsReceivedSet = eventsReceived
+            .toSet()
+            .map { event -> event.message }
         assertEquals(NUMBER_OF_MESSAGES, eventsReceivedSet.size)
+        assertTrue(eventsReceivedSet.containsAll(messages))
 
         if (errors.isNotEmpty()) throw errors.peek()
     }
 
-    @Test
-    fun `stress test with simultaneous publication of n messages to n topics`() {
+    @RepeatedTest(3)
+    fun `stress test with simultaneous publication of n messages to n topics with several broker instances involved`() {
         // Arrange
-        val topics = List(NUMBER_OF_TOPICS) { newRandomTopic() }
+        val topicsAndMessages = (1..NUMBER_OF_TOPICS).associate {
+            newRandomTopic() to List(NUMBER_OF_MESSAGES) { newRandomMessage() }
+        }
 
         val threads = ConcurrentLinkedQueue<Thread>()
         val errors = ConcurrentLinkedQueue<Exception>()
         val eventsReceived = ConcurrentLinkedQueue<Event>()
         val latch = CountDownLatch(NUMBER_OF_SUBSCRIBERS * NUMBER_OF_MESSAGES * NUMBER_OF_TOPICS)
 
-        topics.forEach { topic ->
+        topicsAndMessages.forEach { entry ->
             repeat(NUMBER_OF_SUBSCRIBERS) {
                 getRandomBrokerInstance().subscribe(
-                    topic = topic,
+                    topic = entry.key,
                     handler = { event ->
                         eventsReceived.add(event)
                         latch.countDown()
@@ -405,13 +433,13 @@ class BrokerTests {
         }
 
         // Act
-        topics.forEach { topic ->
-            repeat(NUMBER_OF_MESSAGES) {
+        topicsAndMessages.forEach { entry ->
+            entry.value.forEach { message ->
                 val th = Thread {
                     try {
                         getRandomBrokerInstance().publish(
-                            topic = topic,
-                            message = newRandomMessage()
+                            topic = entry.key,
+                            message = message
                         )
                     } catch (e: Exception) {
                         errors.add(e)
@@ -422,22 +450,29 @@ class BrokerTests {
         }
         threads.forEach { it.join() }
 
+        // Assert
         latch.await(5, TimeUnit.MINUTES)
 
-        // Assert
         assertEquals(NUMBER_OF_SUBSCRIBERS * NUMBER_OF_MESSAGES * NUMBER_OF_TOPICS, eventsReceived.size)
-        topics.forEach { topic ->
-            val eventsReceivedSet = eventsReceived.filter { it.topic == topic }.toSet()
+        topicsAndMessages.forEach { entry ->
+            val eventsReceivedSet = eventsReceived
+                .filter { it.topic == entry.key }
+                .toSet()
+                .map { event -> event.message }
             assertEquals(NUMBER_OF_MESSAGES, eventsReceivedSet.size)
+
+            val messages = topicsAndMessages[entry.key]
+            assertNotNull(messages)
+            assertTrue(eventsReceivedSet.containsAll(messages))
         }
+
         if (errors.isNotEmpty()) throw errors.peek()
     }
 
-    @Test
+    @RepeatedTest(3)
     fun `stress test with simultaneous subscription and publication of a message to n topics`() {
         // Arrange
-        val topics = List(NUMBER_OF_TOPICS) { newRandomTopic() }
-        val message = newRandomMessage()
+        val topicsAndMessages = List(NUMBER_OF_TOPICS) { Pair(newRandomTopic(), newRandomMessage()) }
 
         val threads = ConcurrentLinkedQueue<Thread>()
         val errors = ConcurrentLinkedQueue<Exception>()
@@ -445,11 +480,11 @@ class BrokerTests {
         val latch = CountDownLatch(NUMBER_OF_TOPICS)
 
         // Act
-        topics.forEach { topic ->
+        topicsAndMessages.forEach { pair ->
             val th1 = Thread {
                 try {
                     getRandomBrokerInstance().subscribe(
-                        topic = topic,
+                        topic = pair.first,
                         handler = { event ->
                             eventsReceived.add(event)
                             latch.countDown()
@@ -459,10 +494,11 @@ class BrokerTests {
                     errors.add(e)
                 }
             }
+
             val th2 = Thread {
                 getRandomBrokerInstance().publish(
-                    topic = topic,
-                    message = message
+                    topic = pair.first,
+                    message = pair.second
                 )
             }
             th1.start().also { threads.add(th1) }
@@ -470,16 +506,17 @@ class BrokerTests {
         }
         threads.forEach { it.join() }
 
+        // Assert
         latch.await(5, TimeUnit.MINUTES)
 
-        // Assert
-        assertEquals(NUMBER_OF_TOPICS, eventsReceived.size)
+        assertTrue(eventsReceived.size >= NUMBER_OF_TOPICS)
 
-        topics.forEach { topic ->
-            val event = eventsReceived.find { event -> event.topic == topic }
+        topicsAndMessages.forEach { pair ->
+            val event = eventsReceived.find { event -> event.topic == pair.first }
             assertNotNull(event)
-            assertEquals(message, event.message)
+            assertEquals(pair.second, event.message)
         }
+
         if (errors.isNotEmpty()) throw errors.peek()
     }
 
@@ -489,8 +526,9 @@ class BrokerTests {
         val broker = Broker()
         broker.shutdown()
 
-        // Act
+        // Assert
         assertFailsWith<BrokerTurnOffException> {
+            // Act
             broker.shutdown()
         }
     }
@@ -501,8 +539,9 @@ class BrokerTests {
         val broker = Broker()
         broker.shutdown()
 
-        // Act
+        // Assert
         assertFailsWith<BrokerTurnOffException> {
+            // Act
             broker.subscribe(newRandomTopic()) { _ -> }
         }
     }
@@ -513,14 +552,16 @@ class BrokerTests {
         val broker = Broker()
         broker.shutdown()
 
-        // Act
+        // Assert
         assertFailsWith<BrokerTurnOffException> {
+            // Act
             broker.publish(newRandomTopic(), newRandomMessage())
         }
     }
 
     companion object {
-        private const val NUMBER_OF_BROKER_INSTANCES = 4
+        private const val FIRST_EVENT_ID = 0L
+        private const val NUMBER_OF_BROKER_INSTANCES = 5
         private const val NUMBER_OF_TOPICS = 10
         private const val NUMBER_OF_SUBSCRIBERS = 200
         private const val NUMBER_OF_MESSAGES = 200

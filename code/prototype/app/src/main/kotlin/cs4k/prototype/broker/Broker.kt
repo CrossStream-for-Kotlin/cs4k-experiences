@@ -110,7 +110,8 @@ class Broker {
                 val pgConnection = conn.unwrap(PGConnection::class.java)
 
                 while (!conn.isClosed) {
-                    val newNotifications = pgConnection.getNotifications(0) ?: break
+                    val newNotifications = pgConnection.getNotifications(0)
+                        ?: throw UnexpectedBrokerException()
                     newNotifications.forEach { notification ->
                         logger.info("new notification '{}'", notification.parameter)
                         val event = deserialize(notification.parameter)
