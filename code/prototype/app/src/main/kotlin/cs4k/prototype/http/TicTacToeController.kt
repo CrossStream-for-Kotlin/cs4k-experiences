@@ -7,7 +7,6 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 
@@ -26,8 +25,8 @@ class TicTacToeController(
         ticTacToeService.play(playInputModel.player, id, playInputModel.row, playInputModel.column)
     }
 
-    @GetMapping(Uris.TicTacToe.RELISTEN)
-    fun relisten(@PathVariable id: Int): SseEmitter {
-        return ticTacToeService.relisten(id)
+    @GetMapping(Uris.TicTacToe.WATCH)
+    fun watch(@PathVariable id: Int): SseEmitter {
+        return ticTacToeService.watch(id)
     }
 }

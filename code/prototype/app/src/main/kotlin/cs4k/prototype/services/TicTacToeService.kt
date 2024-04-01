@@ -1,9 +1,11 @@
 package cs4k.prototype.services
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.KotlinModule
 import cs4k.prototype.broker.Broker
 import cs4k.prototype.domain.Game
-import cs4k.prototype.domain.GameError
 import cs4k.prototype.domain.GameInfo
+import cs4k.prototype.http.models.output.GameOutputModel
 import cs4k.prototype.repository.TicTacToeRepository
 import org.springframework.stereotype.Component
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
@@ -56,9 +58,10 @@ class TicTacToeService(
      * @param player the player part of the game.
      * @param id the id of the game.
      */
-    fun relisten(id: Int): SseEmitter {
-        val game = ticTacToeRepository.getGame(id)
-        return listenAndInitialNotify(id, game)
+    fun watch(id: Int): SseEmitter {
+        // Exception if there is no game with said id.
+        ticTacToeRepository.getGame(id)
+        return listenForGameStates(id)
     }
 
     /**
@@ -67,18 +70,28 @@ class TicTacToeService(
      * @param game the game to be played.
      */
     private fun listenAndInitialNotify(gameId: Int, game: Game): SseEmitter {
+        val sseEmitter = listenForGameStates(gameId)
+        val gameInfo = GameInfo(gameId, game)
+        notifyGameState(gameInfo)
+        return sseEmitter
+    }
+
+    /**
+     * Listen for changes in the game state.
+     * @param gameId the id of the game.
+     */
+    private fun listenForGameStates(gameId: Int): SseEmitter {
         val sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(5))
 
-        val gameInfo = GameInfo(gameId, game)
-
         val unsubscribeCallback = broker.subscribe(
-            topic = "gameId${gameInfo.gameId}",
+            topic = "gameId$gameId",
             handler = { event ->
                 try {
+                    val gameInfoReceived = deserializeJsonToGameInfo(event.message)
                     SseEvent.Message(
                         name = event.topic,
                         id = event.id,
-                        data = gameInfo
+                        data = GameOutputModel(gameInfoReceived.gameId, gameInfoReceived.game)
                     ).writeTo(
                         sseEmitter
                     )
@@ -96,8 +109,6 @@ class TicTacToeService(
             unsubscribeCallback()
         }
 
-        notifyGameState(gameInfo)
-
         return sseEmitter
     }
 
@@ -109,7 +120,18 @@ class TicTacToeService(
     private fun notifyGameState(gameInfo: GameInfo) {
         broker.publish(
             topic = "gameId${gameInfo.gameId}",
-            payload = gameInfo
+            payload = gameInfo,
+            isLastMessage = gameInfo.game.isOver()
         )
+    }
+
+    companion object {
+        private val objectMapper = ObjectMapper().registerModules(KotlinModule.Builder().build())
+
+        private fun serializeGameInfoToJson(gameInfo: GameInfo) =
+            objectMapper.writeValueAsString(gameInfo)
+
+        private fun deserializeJsonToGameInfo(message: String) =
+            objectMapper.readValue(message, GameInfo::class.java)
     }
 }
