@@ -1,5 +1,7 @@
 package cs4k.prototype.broker
 
+import cs4k.prototype.broker.BrokerException.EnvironmentVariableException
+
 /**
  * Responsible for accessing environment variables.
  */
@@ -13,7 +15,8 @@ object Environment {
     /**
      * Get the database URL from the environment variable [KEY_DB_URL].
      * @return The database URL.
-     * @throws Exception if the environment variable for the database URL is missing.
+     * @throws EnvironmentVariableException If the environment variable for the database URL is missing.
      */
-    fun getDbUrl() = System.getenv(KEY_DB_URL) ?: throw Exception("Missing environment variable $KEY_DB_URL.")
+    fun getDbUrl() = System.getenv(KEY_DB_URL)
+        ?: throw EnvironmentVariableException("Missing environment variable $KEY_DB_URL for the database URL.")
 }

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import cs4k.prototype.broker.BrokerException.BrokerTurnOffException
+import cs4k.prototype.broker.BrokerException.UnexpectedBrokerException
 import org.postgresql.PGConnection
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -25,7 +26,7 @@ class Broker {
     private val executor = Executor()
 
     // Connection pool.
-    private val dataSource: HikariDataSource = executor.executeWithRetry {
+    private val connectionPool = executor.executeWithRetry {
         createConnectionPool()
     }
 
@@ -44,18 +45,15 @@ class Broker {
 
     /**
      * Subscribe to a topic.
-     * @param topic String
-     * @param handler the handler to be called when there is a new event.
-     * @return the callback to be called when unsubscribing.
+     * @param topic The topic name.
+     * @param handler The handler to be called when there is a new event.
+     * @return The callback to be called when unsubscribing.
      * @throws BrokerTurnOffException if the broker is turned off.
      */
     fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
-        if (dataSource.isClosed) throw BrokerTurnOffException()
+        if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
 
-        val subscriber = Subscriber(
-            id = UUID.randomUUID(),
-            handler = handler
-        )
+        val subscriber = Subscriber(UUID.randomUUID(), handler)
         associatedSubscribers.addToKey(topic, subscriber)
         logger.info("new subscriber topic '{}' id '{}", topic, subscriber.id)
 
@@ -70,30 +68,32 @@ class Broker {
 
     /**
      * Publish a message to a topic.
-     * @param topic String
-     * @param message String
-     * @param isLastMessage Boolean indicates if the message is the last one.
+     * @param topic The topic name.
+     * @param message The message to send.
+     * @param isLastMessage Indicates if the message is the last one.
      * @throws BrokerTurnOffException if the broker is turned off.
      */
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
-        if (dataSource.isClosed) throw BrokerTurnOffException()
+        if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::publish.name}.")
+
         notify(topic, message, isLastMessage)
     }
 
     /**
      * Shutdown the broker.
+     * @throws BrokerTurnOffException if the broker is turned off.
      */
     fun shutdown() {
-        if (dataSource.isClosed) throw BrokerTurnOffException()
+        if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
 
         unListen()
-        dataSource.close()
+        connectionPool.close()
     }
 
     /**
      * Unsubscribe from a topic.
-     * @param topic String
-     * @param subscriber [Subscriber]
+     * @param topic The topic name.
+     * @param subscriber The subscriber who unsubscribed.
      */
     private fun unsubscribe(topic: String, subscriber: Subscriber) {
         associatedSubscribers.removeIf(topic) { sub -> sub.id == subscriber.id }
@@ -106,7 +106,7 @@ class Broker {
      */
     private fun waitForNotification() {
         executor.executeWithRetry("Connection Failed: wait for notifications.") {
-            dataSource.connection.use { conn ->
+            connectionPool.connection.use { conn ->
                 val pgConnection = conn.unwrap(PGConnection::class.java)
 
                 while (!conn.isClosed) {
@@ -142,7 +142,7 @@ class Broker {
      */
     private fun listen() {
         executor.executeWithRetry("Connection Failed: listen for notifications.") {
-            dataSource.connection.use { conn ->
+            connectionPool.connection.use { conn ->
                 conn.createStatement().use { stm ->
                     stm.execute("listen $channel;")
                 }
@@ -156,7 +156,7 @@ class Broker {
      */
     private fun unListen() {
         executor.executeWithRetry("Connection Failed: unListen for notifications.") {
-            dataSource.connection.use { conn ->
+            connectionPool.connection.use { conn ->
                 conn.createStatement().use { stm ->
                     stm.execute("unListen $channel;")
                 }
@@ -167,15 +167,14 @@ class Broker {
 
     /**
      * Notify the topic with the message.
-     * @param topic String
-     * @param message String
-     * @param isLastMessage Boolean indicates if the message is the last one.
+     * @param topic The topic name.
+     * @param message The message to send.
+     * @param isLastMessage Indicates if the message is the last one.
      */
     private fun notify(topic: String, message: String, isLastMessage: Boolean) {
         executor.executeWithRetry("Connection Failed: notify topic.") {
-            dataSource.connection.use { conn ->
+            connectionPool.connection.use { conn ->
                 conn.autoCommit = false
-                // conn.transactionIsolation = Connection.TRANSACTION_SERIALIZABLE
 
                 val event = Event(
                     topic = topic,
@@ -183,9 +182,6 @@ class Broker {
                     message = message,
                     isLast = isLastMessage
                 )
-
-                // 'select pg_notify()' is used because NOTIFY cannot be used in preparedStatement.
-                // query results are ignored, but notifications are still sent.
                 conn.prepareStatement("select pg_notify(?, ?)").use { stm ->
                     stm.setString(1, channel)
                     stm.setString(2, serialize(event))
@@ -202,12 +198,12 @@ class Broker {
 
     /**
      * Get the last event from the topic.
-     * If the topic does not exist, return null.
-     * @param topic String
+     * @param topic The topic name.
+     * @return The last event of the topic, or null if the event does not exist yet.
      */
     private fun getLastEvent(topic: String): Event? =
         executor.executeWithRetry("Connection Failed: get last event.") {
-            dataSource.connection.use { conn ->
+            connectionPool.connection.use { conn ->
                 conn.prepareStatement("select id, message, is_last from events where topic = ? for share;").use { stm ->
                     stm.setString(1, topic)
                     val rs = stm.executeQuery()
@@ -226,14 +222,15 @@ class Broker {
         }
 
     /**
-     * Get the next event id and update the history.
-     * If the topic does not exist, insert a new one.
-     * If the topic exists, update the existing one.
-     * Return the next event id.
-     * @param conn Connection
-     * @param topic String
-     * @param message String
-     * @param isLast Boolean indicates if the message is the last one.
+     * Get the event id and update the history, i.e.:
+     *  - If the topic does not exist, insert a new one.
+     *  - If the topic exists, update the existing one.
+     * @param conn The connection to be used to interact with the database.
+     * @param topic The topic name.
+     * @param message The message.
+     * @param isLast Indicates if the message is the last one.
+     * @return The event id.
+     * @throws UnexpectedBrokerException if something unexpected happens.
      */
     private fun getEventIdAndUpdateHistory(conn: Connection, topic: String, message: String, isLast: Boolean): Long {
         conn.prepareStatement(
@@ -249,7 +246,7 @@ class Broker {
             stm.setString(2, message)
             stm.setBoolean(3, isLast)
             val rs = stm.executeQuery()
-            return if (rs.next()) rs.getLong("id") else throw IllegalStateException("TODO")
+            return if (rs.next()) rs.getLong("id") else throw UnexpectedBrokerException()
         }
     }
 
@@ -258,7 +255,7 @@ class Broker {
      */
     private fun createEventsTable() {
         executor.executeWithRetry("Connection Failed: create events table.") {
-            dataSource.connection.use { conn ->
+            connectionPool.connection.use { conn ->
                 conn.createStatement().use { stm ->
                     stm.execute(
                         """
@@ -276,15 +273,15 @@ class Broker {
     }
 
     companion object {
-        // Logger instance for logging Broker class events.
+        // Logger instance for logging Broker class information.
         private val logger = LoggerFactory.getLogger(Broker::class.java)
 
-        // ObjectMapper instance for serializing and deserializing JSON with Kotlin support.
+        // ObjectMapper instance for serializing and deserializing JSON.
         private val objectMapper = ObjectMapper().registerModules(KotlinModule.Builder().build())
 
         /**
-         * Create a connection poll.
-         * @return HikariDataSource instance.
+         * Create a connection poll for database interactions.
+         * @return The connection poll represented by a HikariDataSource instance.
          * @see [HikariCP](https://github.com/brettwooldridge/HikariCP)
          */
         private fun createConnectionPool(): HikariDataSource {

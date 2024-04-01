@@ -17,8 +17,8 @@ class AssociatedSubscribers {
 
     /**
      * Get all subscribers associated with a topic.
-     * @param topic the topic to get the subscribers from.
-     * @return the list of subscribers associated with the topic.
+     * @param topic The topic to get the subscribers from.
+     * @return The list of subscribers associated with the topic.
      */
     fun getAll(topic: String) = lock.withLock {
         map[topic] ?: emptyList()
@@ -26,8 +26,8 @@ class AssociatedSubscribers {
 
     /**
      * Add a subscriber to a topic.
-     * @param topic the topic to add the subscriber to.
-     * @param subscriber the subscriber to add.
+     * @param topic The topic to add the subscriber to.
+     * @param subscriber The subscriber to add.
      */
     fun addToKey(topic: String, subscriber: Subscriber) {
         lock.withLock {
@@ -39,8 +39,8 @@ class AssociatedSubscribers {
 
     /**
      * Remove a subscriber from a topic.
-     * @param topic the topic to remove the subscriber from.
-     * @param predicate a predicate to determine which subscriber to remove.
+     * @param topic The topic to remove the subscriber from.
+     * @param predicate A predicate to determine which subscriber to remove.
      */
     fun removeIf(topic: String, predicate: (Subscriber) -> Boolean) {
         lock.withLock {
