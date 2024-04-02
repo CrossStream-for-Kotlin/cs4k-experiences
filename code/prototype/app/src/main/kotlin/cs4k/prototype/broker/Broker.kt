@@ -64,10 +64,6 @@ class Broker {
         return { unsubscribe(topic, subscriber) }
     }
 
-    fun <K> publish(topic: String, payload: K, isLastMessage: Boolean = false) {
-        publish(topic, objectMapper.writeValueAsString(payload), isLastMessage)
-    }
-
     /**
      * Publish a message to a topic.
      * @param topic The topic name.
