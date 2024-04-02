@@ -4,7 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
-import cs4k.prototype.broker.BrokerException.*
+import cs4k.prototype.broker.BrokerException.BrokerDbConnectionException
+import cs4k.prototype.broker.BrokerException.BrokerDbLostConnectionException
+import cs4k.prototype.broker.BrokerException.BrokerTurnOffException
+import cs4k.prototype.broker.BrokerException.UnexpectedBrokerException
 import org.postgresql.PGConnection
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -141,7 +144,7 @@ class Broker {
      * Listen for notifications.
      */
     private fun listen() {
-        executor.executeWithRetry( BrokerDbLostConnectionException()) {
+        executor.executeWithRetry(BrokerDbLostConnectionException()) {
             connectionPool.connection.use { conn ->
                 conn.createStatement().use { stm ->
                     stm.execute("listen $channel;")
@@ -155,7 +158,7 @@ class Broker {
      * UnListen for notifications.
      */
     private fun unListen() {
-        executor.executeWithRetry( BrokerDbLostConnectionException()) {
+        executor.executeWithRetry(BrokerDbLostConnectionException()) {
             connectionPool.connection.use { conn ->
                 conn.createStatement().use { stm ->
                     stm.execute("unListen $channel;")

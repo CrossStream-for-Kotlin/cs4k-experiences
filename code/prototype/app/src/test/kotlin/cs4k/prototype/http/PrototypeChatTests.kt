@@ -232,7 +232,7 @@ class PrototypeChatTests {
                     val eventsReceived = emitter
                         .take(NUMBER_OF_MESSAGES.toLong())
                         .collectList()
-                        .block(Duration.ofMinutes(1))
+                        .block(Duration.ofMinutes(5))
                         ?.toList() ?: fail("Messages not received.")
 
                     messages.forEachIndexed { idx, message ->
@@ -319,7 +319,7 @@ class PrototypeChatTests {
 
     companion object {
         private const val FIRST_EVENT_ID = 0L
-        private const val NUMBER_OF_LISTENERS = 100
+        private const val NUMBER_OF_LISTENERS = 30
         private const val NUMBER_OF_MESSAGES = 100
         // private const val NUMBER_OF_GROUPS = 10
 

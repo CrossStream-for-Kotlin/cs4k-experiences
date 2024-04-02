@@ -141,13 +141,11 @@ class PrototypeTTCTests {
 
                     val gameReceived = objectMapper.convertValue(eventReceived.data(), GameOutputModel::class.java)
                     assertEquals(gameAReceived, gameReceived)
-
                 } catch (e: AssertionError) {
                     failures.add(e)
                 } catch (e: Exception) {
                     errors.add(e)
                 }
-
             }
             th.start().also { threads.add(th) }
         }
@@ -211,20 +209,21 @@ class PrototypeTTCTests {
                     val currentBoard = objectMapper.convertValue(eventReceived[1].data(), GameOutputModel::class.java)
 
                     assertEquals(gameAReceived, initialBoard)
-                    assertTrue(currentBoard.game.board.all {
-                        piece -> piece.row == playInputModel.row &&
-                            piece.column == playInputModel.column &&
-                            piece.shape == Game.Shape.X
-                    })
+                    assertTrue(
+                        currentBoard.game.board.all {
+                                piece ->
+                            piece.row == playInputModel.row &&
+                                piece.column == playInputModel.column &&
+                                piece.shape == Game.Shape.X
+                        }
+                    )
 
                     assertEquals(Game.State.O_TURN, currentBoard.game.state)
-
                 } catch (e: AssertionError) {
                     failures.add(e)
                 } catch (e: Exception) {
                     errors.add(e)
                 }
-
             }
             th.start().also { threads.add(th) }
         }

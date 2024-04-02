@@ -158,15 +158,15 @@ class AssociatedSubscribersTest {
         // Act
         repeat(NUMBER_OF_SUBSCRIBERS) {
             threads.add(
-                Thread { associatedSubscribers.addToKey(topic, subscriber1) },
+                Thread { associatedSubscribers.addToKey(topic, subscriber1) }
             )
             threads.add(Thread { associatedSubscribers.addToKey(topic, subscriber2) })
-            if (NUMBER_OF_SUBSCRIBERS-1>it){
+            if (NUMBER_OF_SUBSCRIBERS - 1 > it) {
                 threads.add(
-                    Thread { associatedSubscribers.removeIf(topic) { it.id == subscriberId1 } },
+                    Thread { associatedSubscribers.removeIf(topic) { it.id == subscriberId1 } }
                 )
                 threads.add(
-                    Thread { associatedSubscribers.removeIf(topic) { it.id == subscriberId2 } },
+                    Thread { associatedSubscribers.removeIf(topic) { it.id == subscriberId2 } }
                 )
             }
         }
@@ -175,8 +175,8 @@ class AssociatedSubscribersTest {
         threads.forEach { it.join() }
 
         // Assert
-        assertTrue( associatedSubscribers.getAll(topic).contains(subscriber1))
-        assertTrue( associatedSubscribers.getAll(topic).contains(subscriber2))
+        assertTrue(associatedSubscribers.getAll(topic).contains(subscriber1))
+        assertTrue(associatedSubscribers.getAll(topic).contains(subscriber2))
     }
 
     @Test
@@ -199,7 +199,7 @@ class AssociatedSubscribersTest {
         threads.forEach { it.start() }
         threads.forEach { it.join() }
 
-        //Assert
+        // Assert
         assertEquals(NUMBER_OF_SUBSCRIBERS, associatedSubscribers.getAll(topic).size)
     }
 
@@ -230,13 +230,12 @@ class AssociatedSubscribersTest {
         threads.forEach { it.start() }
         threads.forEach { it.join() }
 
-        //Assert
+        // Assert
         assertEquals(NUMBER_OF_SUBSCRIBERS / 2, associatedSubscribers.getAll(topic).size)
         associatedSubscribers.getAll(topic).forEach { subscriber ->
             assertEquals(subscribers.contains(subscriber), true)
         }
     }
-
 
     companion object {
         private const val NUMBER_OF_SUBSCRIBERS = 50

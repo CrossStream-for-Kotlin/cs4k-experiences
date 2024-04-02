@@ -3,8 +3,7 @@ package cs4k.prototype.broker
 /**
  * Represent [Broker] exceptions.
  */
-sealed class BrokerException(msg: String="") : Exception(msg) {
-
+sealed class BrokerException(msg: String = "") : Exception(msg) {
 
     /**
      * Exception indicating that the connection to the database couldn't be established.
@@ -20,7 +19,7 @@ sealed class BrokerException(msg: String="") : Exception(msg) {
      * Exception indicating that the broker is turned off.
      * @param msg The message to show.
      */
-    class BrokerTurnOffException(msg: String =" ") : BrokerException(msg)
+    class BrokerTurnOffException(msg: String = " ") : BrokerException(msg)
 
     /**
      * Missing environment variable required by broker.
