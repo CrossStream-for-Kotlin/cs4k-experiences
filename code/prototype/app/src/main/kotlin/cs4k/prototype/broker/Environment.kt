@@ -7,9 +7,7 @@ import cs4k.prototype.broker.BrokerException.EnvironmentVariableException
  */
 object Environment {
 
-    /**
-     * Name of environment variable for database URL.
-     */
+    // Name of environment variable for database URL.
     private const val KEY_DB_URL = "DB_URL"
 
     /**

@@ -27,6 +27,11 @@ sealed class BrokerException(msg: String = "") : Exception(msg) {
     class EnvironmentVariableException(msg: String) : BrokerException(msg)
 
     /**
+     * Database connection poll size not allowed.
+     */
+    class DbConnectionPoolSizeException(msg: String) : BrokerException(msg)
+
+    /**
      * Something unexpected happened at the broker.
      */
     class UnexpectedBrokerException(msg: String = UNEXPECTED_BROKER_EXCEPTION_DEFAULT_MESSAGE) : BrokerException(msg)

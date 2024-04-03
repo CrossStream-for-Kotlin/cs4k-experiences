@@ -1,6 +1,7 @@
 package cs4k.prototype.broker
 
 import cs4k.prototype.broker.BrokerException.BrokerTurnOffException
+import cs4k.prototype.broker.BrokerException.DbConnectionPoolSizeException
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.RepeatedTest
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -19,6 +20,26 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 class BrokerTests {
+
+    @Test
+    fun `cannot create a broker with a negative database connection pool size`() {
+        // Arrange
+        // Act
+        // Assert
+        assertFailsWith<DbConnectionPoolSizeException> {
+            Broker(dbConnectionPoolSize = -10)
+        }
+    }
+
+    @Test
+    fun `cannot create a broker with too high a database connection pool size`() {
+        // Arrange
+        // Act
+        // Assert
+        assertFailsWith<DbConnectionPoolSizeException> {
+            Broker(dbConnectionPoolSize = 1000)
+        }
+    }
 
     @Test
     fun `new subscriber in 1 topic should receive the last message`() {
