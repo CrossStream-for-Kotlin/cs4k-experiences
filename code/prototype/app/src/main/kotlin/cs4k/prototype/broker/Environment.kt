@@ -12,6 +12,7 @@ object Environment {
 
     /**
      * Get the database URL from the environment variable [KEY_DB_URL].
+     *
      * @return The database URL.
      * @throws EnvironmentVariableException If the environment variable for the database URL is missing.
      */

@@ -4,8 +4,9 @@ import org.slf4j.LoggerFactory
 
 /**
  * Represents a retry mechanism.
- * @param maxRetries the maximum number of retries.
- * @param waitTimeMillis the time to wait between retries.
+ *
+ * @param maxRetries The maximum number of retries.
+ * @param waitTimeMillis The time to wait between retries.
  */
 class RetryExecutor(
     private val maxRetries: Int = 3,
@@ -13,36 +14,36 @@ class RetryExecutor(
 ) {
     /**
      * Execute an action with retry mechanism.
-     * @param action the action to execute.
-     * @param exception the exception to throw if the action fails.
-     * @param retryCondition the condition to retry the action.
-     * @return the result of the action.
+     *
+     * @param action The action to execute.
+     * @param exception The exception to throw if the action fails after retries.
+     * @param retryCondition The condition to retry the action.
+     * @return The result of the action.
      */
     fun <T> execute(
-        exception:() -> BrokerException,
+        exception: () -> BrokerException,
         action: () -> T,
-        retryCondition: (Throwable) -> Boolean
-        ): T {
+        retryCondition: (Throwable) -> Boolean = { true }
+    ): T {
         repeat(maxRetries) {
             try {
                 return action()
             } catch (e: Exception) {
-                if (!retryCondition(e)) {
+                logger.error("error executing action, message '{}'", e.message)
+                if (retryCondition(e)) {
+                    logger.error("... retrying ...")
+                    Thread.sleep(waitTimeMillis)
+                } else {
+                    logger.error("... not retrying ...")
                     throw e
                 }
-                Thread.sleep(waitTimeMillis)
-                logger.error("Error executing action, retrying, {}", e.message)
             }
         }
         throw exception()
     }
 
-
-    companion object {
+    private companion object {
         // Logger instance for logging Executor class error.
         private val logger = LoggerFactory.getLogger(RetryExecutor::class.java)
-
     }
 }
-
-

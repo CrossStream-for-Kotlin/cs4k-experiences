@@ -17,6 +17,7 @@ class AssociatedSubscribers {
 
     /**
      * Get all subscribers associated with a topic.
+     *
      * @param topic The topic to get the subscribers from.
      * @return The list of subscribers associated with the topic.
      */
@@ -26,6 +27,7 @@ class AssociatedSubscribers {
 
     /**
      * Add a subscriber to a topic.
+     *
      * @param topic The topic to add the subscriber to.
      * @param subscriber The subscriber to add.
      */
@@ -39,6 +41,7 @@ class AssociatedSubscribers {
 
     /**
      * Remove a subscriber from a topic.
+     *
      * @param topic The topic to remove the subscriber from.
      * @param predicate A predicate to determine which subscriber to remove.
      */
