@@ -421,7 +421,7 @@ class BrokerTests {
         assertTrue(reachedZero)
     }
 
-    @RepeatedTest(5)
+    @RepeatedTest(10)
     fun `stress test with simultaneous publication of n messages to 1 topic with several broker instances involved`() {
         // Arrange
         val topic = newRandomTopic()
@@ -473,7 +473,7 @@ class BrokerTests {
         if (errors.isNotEmpty()) throw errors.peek()
     }
 
-    @RepeatedTest(5)
+    @RepeatedTest(10)
     fun `stress test with simultaneous publication of n messages to n topics with several broker instances involved`() {
         // Arrange
         val topicsAndMessages = (1..NUMBER_OF_TOPICS).associate {
@@ -535,7 +535,7 @@ class BrokerTests {
         if (errors.isNotEmpty()) throw errors.peek()
     }
 
-    @RepeatedTest(5)
+    @RepeatedTest(10)
     fun `stress test with simultaneous subscription and publication of a message to n topics`() {
         // Arrange
         val topicsAndMessages = List(NUMBER_OF_TOPICS) { Pair(newRandomTopic(), newRandomMessage()) }
@@ -587,7 +587,7 @@ class BrokerTests {
         if (errors.isNotEmpty()) throw errors.peek()
     }
 
-    @RepeatedTest(5)
+    @RepeatedTest(10)
     fun `consecutive subscription and unSubscriptions while periodic publication of a message`() {
         // Arrange
         val topic = newRandomTopic()
@@ -643,7 +643,7 @@ class BrokerTests {
         publisherThread.join()
     }
 
-    @RepeatedTest(5)
+    @RepeatedTest(10)
     fun `stress test with simultaneous subscription and unSubscriptions while periodic publication of a message`() {
         // Arrange
         val topic = newRandomTopic()
@@ -712,6 +712,88 @@ class BrokerTests {
         threads.forEach { it.join() }
         publisherThread.interrupt()
         publisherThread.join()
+
+        if (failures.isNotEmpty()) throw failures.peek()
+        if (errors.isNotEmpty()) throw errors.peek()
+    }
+
+    @RepeatedTest(10)
+    fun `stress test with simultaneous subscription and unSubscriptions while periodic publication of a message in multiple topics`() {
+        // Arrange
+        val topicsAndMessages = (1..NUMBER_OF_TOPICS).associate {
+            newRandomTopic() to ConcurrentLinkedQueue<String>()
+        }
+        val lock = ReentrantLock()
+        val maxExecutionTimeMillis = 60000 // 1 minute
+
+        val failures = ConcurrentLinkedQueue<AssertionError>()
+        val errors = ConcurrentLinkedQueue<Exception>()
+        val publisherThreads = ConcurrentLinkedQueue<Thread>()
+        val threads = ConcurrentLinkedQueue<Thread>()
+
+        topicsAndMessages.forEach { entry ->
+            val publisherThread = Thread {
+                while (!Thread.currentThread().isInterrupted) {
+                    lock.withLock {
+                        newRandomMessage()
+                            .also {
+                                getRandomBrokerInstance().publish(
+                                    topic = entry.key,
+                                    message = it
+                                )
+                            }
+                            .also { entry.value.offer(it) }
+                    }
+                    Thread.sleep(10000) // 10 seconds
+                }
+            }
+            publisherThread.start().also { publisherThreads.add(publisherThread) }
+        }
+
+        // Act
+        val startTimeMillis = System.currentTimeMillis()
+        topicsAndMessages.forEach { entry ->
+            repeat(NUMBER_OF_SUBSCRIBERS) {
+                val th = Thread {
+                    while (true) {
+                        val events = ConcurrentLinkedQueue<Event>()
+                        val latch = CountDownLatch(2)
+                        val unsubscribe = getRandomBrokerInstance().subscribe(
+                            topic = entry.key,
+                            handler = { event ->
+                                events.add(event)
+                                latch.countDown()
+                            }
+                        )
+                        try {
+                            // Assert
+                            val reachedZero = latch.await(1, TimeUnit.MINUTES)
+                            assertTrue(reachedZero)
+
+                            lock.withLock {
+                                val messages = topicsAndMessages[entry.key]
+                                assertNotNull(messages)
+                                assertTrue(events.map { it.message }.toSet().contains(messages.last()))
+                            }
+
+                            unsubscribe()
+                        } catch (e: AssertionError) {
+                            failures.add(e)
+                        } catch (e: Exception) {
+                            errors.add(e)
+                        }
+
+                        val currentTimeMillis = System.currentTimeMillis()
+                        if (currentTimeMillis - startTimeMillis >= maxExecutionTimeMillis) break
+                    }
+                }
+                th.start().also { threads.add(th) }
+            }
+        }
+
+        threads.forEach { it.join() }
+        publisherThreads.forEach { it.interrupt() }
+        publisherThreads.forEach { it.join() }
 
         if (failures.isNotEmpty()) throw failures.peek()
         if (errors.isNotEmpty()) throw errors.peek()
