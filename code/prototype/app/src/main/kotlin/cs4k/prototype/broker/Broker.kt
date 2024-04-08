@@ -15,6 +15,7 @@ import org.postgresql.PGConnection
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.sql.Connection
+import java.sql.SQLException
 import java.util.UUID
 import kotlin.concurrent.thread
 
@@ -34,13 +35,15 @@ class Broker(
     // Association between topics and subscribers lists.
     private val associatedSubscribers = AssociatedSubscribers()
 
-    // Executor.
-    private val executor = Executor()
+    // Retry executor.
+    private val retryExecutor = RetryExecutor()
 
     // Connection pool.
-    private val connectionPool = executor.executeWithRetry(BrokerDbConnectionException()) {
+    private val connectionPool = retryExecutor.execute({ BrokerDbConnectionException() }, {
         createConnectionPool(dbConnectionPoolSize)
-    }
+    }, retryCondition = { it is BrokerDbConnectionException })
+
+    private val retryCondition: (Throwable) -> Boolean = { connectionPool.isClosed }
 
     init {
         // Create the events table if it does not exist.
@@ -114,7 +117,7 @@ class Broker(
      * @throws UnexpectedBrokerException If something unexpected happens.
      */
     private fun waitForNotification() {
-        executor.executeWithRetry(BrokerDbLostConnectionException()) {
+        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
             connectionPool.connection.use { conn ->
                 val pgConnection = conn.unwrap(PGConnection::class.java)
 
@@ -130,7 +133,7 @@ class Broker(
                     }
                 }
             }
-        }
+        }, retryCondition)
     }
 
     /**
@@ -147,14 +150,14 @@ class Broker(
      * Execute the ChannelCommandOperation.
      */
     private fun ChannelCommandOperation.execute() {
-        executor.executeWithRetry(BrokerDbLostConnectionException()) {
+        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
             connectionPool.connection.use { conn ->
                 conn.createStatement().use { stm ->
                     stm.execute("$this $channel;")
                 }
             }
             logger.info("$this channel '{}'", channel)
-        }
+        }, retryCondition)
     }
 
     /**
@@ -164,29 +167,36 @@ class Broker(
      * @param isLastMessage Indicates if the message is the last one.
      */
     private fun notify(topic: String, message: String, isLastMessage: Boolean) {
-        executor.executeWithRetry(BrokerDbLostConnectionException()) {
+        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
             connectionPool.connection.use { conn ->
-                conn.autoCommit = false
+                try {
+                    conn.autoCommit = false
 
-                val event = Event(
-                    topic = topic,
-                    id = getEventIdAndUpdateHistory(conn, topic, message, isLastMessage),
-                    message = message,
-                    isLast = isLastMessage
-                )
+                    val event = Event(
+                        topic = topic,
+                        id = getEventIdAndUpdateHistory(conn, topic, message, isLastMessage),
+                        message = message,
+                        isLast = isLastMessage
+                    )
 
-                conn.prepareStatement("select pg_notify(?, ?)").use { stm ->
-                    stm.setString(1, channel)
-                    stm.setString(2, serialize(event))
-                    stm.execute()
+                    conn.prepareStatement("select pg_notify(?, ?)").use { stm ->
+                        stm.setString(1, channel)
+                        stm.setString(2, serialize(event))
+                        stm.execute()
+                    }
+
+                    conn.commit()
+                    conn.autoCommit = true
+
+                    logger.info("notify topic '{}' event '{}", topic, event)
+                } catch (
+                    e: SQLException
+                ) {
+                    conn.rollback()
+                    throw e
                 }
-
-                conn.commit()
-                conn.autoCommit = true
-
-                logger.info("notify topic '{}' event '{}", topic, event)
             }
-        }
+        }, retryCondition)
     }
 
     /**
@@ -224,13 +234,13 @@ class Broker(
      * @return The last event of the topic, or null if the topic does not exist yet.
      */
     private fun getLastEvent(topic: String): Event? =
-        executor.executeWithRetry(BrokerDbLostConnectionException()) {
+        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
             connectionPool.connection.use { conn ->
                 /*for share*/
                 conn.prepareStatement("select id, message, is_last from events where topic = ?;").use { stm ->
                     stm.setString(1, topic)
                     val rs = stm.executeQuery()
-                    return@executeWithRetry if (rs.next()) {
+                    return@execute if (rs.next()) {
                         Event(
                             topic = topic,
                             id = rs.getLong("id"),
@@ -242,13 +252,13 @@ class Broker(
                     }
                 }
             }
-        }
+        }, retryCondition)
 
     /**
      * Create the events table if it does not exist.
      */
     private fun createEventsTable() {
-        executor.executeWithRetry(BrokerDbLostConnectionException()) {
+        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
             connectionPool.connection.use { conn ->
                 conn.createStatement().use { stm ->
                     stm.execute(
@@ -263,7 +273,7 @@ class Broker(
                     )
                 }
             }
-        }
+        }, retryCondition)
     }
 
     private companion object {

@@ -541,6 +541,7 @@ class BrokerTests {
         if (errors.isNotEmpty()) throw errors.peek()
     }
 
+
     @Test
     fun `cannot invoke method shutdown twice`() {
         // Arrange
