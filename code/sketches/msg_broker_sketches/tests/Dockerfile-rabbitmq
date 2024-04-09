@@ -1,0 +1,5 @@
+FROM rabbitmq:3.9
+
+RUN rabbitmq-plugins enable rabbitmq_stream
+
+EXPOSE 5672
