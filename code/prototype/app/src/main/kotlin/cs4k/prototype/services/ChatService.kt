@@ -27,15 +27,16 @@ class ChatService(val broker: Broker) {
      */
     fun newListener(group: String?): SseEmitter {
         val sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(30))
+
         val unsubscribeCallback = broker.subscribe(
             topic = group ?: generalGroup,
             handler = { event ->
                 try {
-                    val message = deserializeJsonToMessage(event.message)
+                    val messageReceived = deserializeJsonToMessage(event.message)
                     SseEvent.Message(
                         name = event.topic,
                         id = event.id,
-                        data = MessageOutputModel(message.message)
+                        data = MessageOutputModel(messageReceived.message)
                     ).writeTo(
                         sseEmitter
                     )

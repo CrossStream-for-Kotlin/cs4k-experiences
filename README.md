@@ -1,2 +1,2 @@
-# cross-stream-for-kotlin-ps
-Library to support the use of SSE and WebSockets on multi-node environments
+# cs4k-experiences
+Library for the use of Server-sent events and WebSockets in multi-node backends systems

@@ -120,7 +120,7 @@ class TicTacToeService(
     private fun notifyGameState(gameInfo: GameInfo) {
         broker.publish(
             topic = "gameId${gameInfo.gameId}",
-            payload = gameInfo,
+            message = serializeGameInfoToJson(gameInfo),
             isLastMessage = gameInfo.game.isOver()
         )
     }
