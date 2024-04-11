@@ -210,7 +210,10 @@ class BrokerRedis(
     private fun getLastEvent(topic: String): Event? =
         retryExecutor.execute({ BrokerDbLostConnectionException() }, {
             connectionPool.resource.use { jedis ->
-                val event = jedis.get(topic)
+                jedis.watch(topic)
+                val transaction = jedis.multi()
+                transaction.get(topic)
+                val event = transaction.exec().firstOrNull()?.toString()
                 if (event == null) null else deserialize(event)
             }
         }, retryCondition)
