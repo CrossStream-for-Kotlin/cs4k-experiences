@@ -28,6 +28,12 @@ dependencies {
     // For Postgresql
     implementation("org.postgresql:postgresql:42.7.0")
 
+    // For RabbitMQ
+    implementation("com.rabbitmq:amqp-client:5.20.0")
+
+    // For Redis
+    implementation("redis.clients:jedis:5.1.0")
+
     // For automated tests
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webflux") // To use WebTestClient on tests
@@ -55,7 +61,7 @@ tasks.withType<Test> {
  *   and provide it with the same password as define on `tests/Dockerfile-db-test`
  */
 task<Exec>("dbTestsUp") {
-    commandLine("docker-compose", "up", "-d", "--build", "--force-recreate", "db-tests")
+    commandLine("docker-compose", "up", "-d")
 }
 
 task<Exec>("dbTestsWait") {
