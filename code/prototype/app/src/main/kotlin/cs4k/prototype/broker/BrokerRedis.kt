@@ -15,11 +15,10 @@ import redis.clients.jedis.Jedis
 import redis.clients.jedis.JedisPool
 import redis.clients.jedis.JedisPoolConfig
 import redis.clients.jedis.JedisPubSub
+import redis.clients.jedis.Transaction
 import redis.clients.jedis.exceptions.JedisException
-import java.sql.SQLException
 import java.util.*
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
+import kotlin.concurrent.thread
 
 @Component
 class BrokerRedis(
@@ -36,8 +35,6 @@ class BrokerRedis(
 
     // Association between topics and subscribers lists.
     private val associatedSubscribers = AssociatedSubscribers()
-
-    private val lock = ReentrantLock()
 
     // Retry executor.
     private val retryExecutor = RetryExecutor()
@@ -56,7 +53,9 @@ class BrokerRedis(
 
     init {
         // Start a new thread to listen for notifications.
-        listen()
+        thread {
+            listen()
+        }
     }
 
     private inner class BrokerPubSub : JedisPubSub() {
@@ -69,6 +68,8 @@ class BrokerRedis(
                 .forEach { subscriber -> subscriber.handler(event) }
         }
     }
+
+    private val pubSub = BrokerPubSub()
 
     /**
      * Subscribe to a topic.
@@ -146,8 +147,8 @@ class BrokerRedis(
      */
     private fun ChannelCommandOperation.execute() {
         retryExecutor.execute({ BrokerDbLostConnectionException() }, {
-            when(this) {
-                Listen -> acceptingConnection.subscribe(BrokerPubSub(), channel)
+            when (this) {
+                Listen -> acceptingConnection.subscribe(pubSub, channel)
                 UnListen -> acceptingConnection.close()
             }
 
@@ -166,21 +167,14 @@ class BrokerRedis(
     private fun notify(topic: String, message: String, isLastMessage: Boolean) {
         retryExecutor.execute({ BrokerDbLostConnectionException() }, {
             connectionPool.resource.use { jedis ->
-                try {
-                    val event = Event(
-                        topic = topic,
-                        id = getEventIdAndUpdateHistory(jedis, topic, message, isLastMessage),
-                        message = message,
-                        isLast = isLastMessage
-                    )
-
-                    jedis.publish(channel, serialize(event))
-
-                    logger.info("notify topic '{}' event '{}", topic, event)
-                } catch (e: JedisException) {
-                    //
-                    throw e
-                }
+                val event = Event(
+                    topic = topic,
+                    id = getEventIdAndUpdateHistory(jedis, topic, message, isLastMessage),
+                    message = message,
+                    isLast = isLastMessage
+                )
+                jedis.publish(channel, serialize(event))
+                logger.info("notify topic '{}' event '{}", topic, event)
             }
         }, retryCondition)
     }
@@ -198,12 +192,14 @@ class BrokerRedis(
      * @throws UnexpectedBrokerException If something unexpected happens.
      */
     private fun getEventIdAndUpdateHistory(jedis: Jedis, topic: String, message: String, isLast: Boolean): Long {
-        lock.withLock {
-            val lastEvent = jedis.get(topic)
-            val eventId = if (lastEvent == null) 0 else deserialize(lastEvent).id + 1
-            jedis.set(topic, serialize(Event(topic, eventId, message, isLast)))
-            return eventId
-        }
+        val lastEvent = jedis.get(topic)
+        jedis.watch(topic)
+        val transaction = jedis.multi()
+        val eventId = if (lastEvent == null) 0 else deserialize(lastEvent).id + 1
+        transaction.set(topic, serialize(Event(topic, eventId, message, isLast)))
+        transaction.exec()
+        return eventId
+
     }
 
     /**
@@ -216,10 +212,9 @@ class BrokerRedis(
     private fun getLastEvent(topic: String): Event? =
         retryExecutor.execute({ BrokerDbLostConnectionException() }, {
             connectionPool.resource.use { jedis ->
-                lock.withLock {
-                    val event = jedis.get(topic)
-                    if (event == null) null else deserialize(event)
-                }
+                val event = jedis.get(topic)
+                if (event == null) null else deserialize(event)
+
             }
         }, retryCondition)
 
