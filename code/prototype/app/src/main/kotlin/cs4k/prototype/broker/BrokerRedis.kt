@@ -15,7 +15,6 @@ import redis.clients.jedis.Jedis
 import redis.clients.jedis.JedisPool
 import redis.clients.jedis.JedisPoolConfig
 import redis.clients.jedis.JedisPubSub
-import redis.clients.jedis.Transaction
 import redis.clients.jedis.exceptions.JedisException
 import java.util.*
 import kotlin.concurrent.thread
@@ -199,7 +198,6 @@ class BrokerRedis(
         transaction.set(topic, serialize(Event(topic, eventId, message, isLast)))
         transaction.exec()
         return eventId
-
     }
 
     /**
@@ -214,7 +212,6 @@ class BrokerRedis(
             connectionPool.resource.use { jedis ->
                 val event = jedis.get(topic)
                 if (event == null) null else deserialize(event)
-
             }
         }, retryCondition)
 
