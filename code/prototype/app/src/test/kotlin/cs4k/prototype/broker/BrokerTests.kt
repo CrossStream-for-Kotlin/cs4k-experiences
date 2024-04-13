@@ -799,6 +799,203 @@ class BrokerTests {
         if (errors.isNotEmpty()) throw errors.peek()
     }
 
+    @RepeatedTest(10)
+    fun `consecutive subscription and unSubscriptions while periodic publication of a message and verify that all events are received in the correct order`() {
+        // Arrange
+        val topic = newRandomTopic()
+        val messages = ConcurrentLinkedQueue<String>()
+        val lock = ReentrantLock()
+        val maxExecutionTimeMillis = 60000 // 1 minute
+
+        val publisherThread = Thread {
+            while (!Thread.currentThread().isInterrupted) {
+                lock.withLock {
+                    newRandomMessage()
+                        .also {
+                            getRandomBrokerInstance().publish(
+                                topic = topic,
+                                message = it
+                            )
+                        }
+                        .also {
+                            messages.add(it)
+                        }
+                }
+                Thread.sleep(1000) // 1 second
+            }
+        }
+        publisherThread.start()
+
+        val events = ConcurrentLinkedQueue<Event>()
+        // Act
+        val startTimeMillis = System.currentTimeMillis()
+        while (true) {
+            val latch = CountDownLatch(1)
+            val unsubscribe = getRandomBrokerInstance().subscribe(
+                topic = topic,
+                handler = { event ->
+                    events.add(event)
+                    latch.countDown()
+                }
+            )
+            val reachedZero = latch.await(1, TimeUnit.MINUTES)
+            assertTrue(reachedZero)
+
+            unsubscribe()
+
+            val currentTimeMillis = System.currentTimeMillis()
+            if (currentTimeMillis - startTimeMillis >= maxExecutionTimeMillis) break
+        }
+
+        publisherThread.interrupt()
+        publisherThread.join()
+
+        assertEquals(messages.toList(), events.map { it.message }.toSet().toList())
+    }
+
+    @RepeatedTest(10)
+    fun `stress test with simultaneous subscription and unSubscriptions while periodic publication of a message and verify that all events are received in the correct order`() {
+        // Arrange
+        val topic = newRandomTopic()
+        val messages = ConcurrentLinkedQueue<String>()
+        val lock = ReentrantLock()
+        val maxExecutionTimeMillis = 60000 // 1 minute
+
+        val failures = ConcurrentLinkedQueue<AssertionError>()
+        val errors = ConcurrentLinkedQueue<Exception>()
+        val threads = ConcurrentLinkedQueue<Thread>()
+
+        val publisherThread = Thread {
+            while (!Thread.currentThread().isInterrupted) {
+                lock.withLock {
+                    newRandomMessage()
+                        .also {
+                            getRandomBrokerInstance().publish(
+                                topic = topic,
+                                message = it
+                            )
+                        }
+                        .also { messages.offer(it) }
+                }
+                Thread.sleep(10000) // 10 seconds
+            }
+        }
+        publisherThread.start()
+
+        // Act
+        val startTimeMillis = System.currentTimeMillis()
+        val events = ConcurrentLinkedQueue<Event>()
+        repeat(NUMBER_OF_SUBSCRIBERS) {
+            val th = Thread {
+                while (true) {
+                    val latch = CountDownLatch(1)
+                    val unsubscribe = getRandomBrokerInstance().subscribe(
+                        topic = topic,
+                        handler = { event ->
+                            events.add(event)
+                            latch.countDown()
+                        }
+                    )
+                    try {
+                        // Assert
+                        val reachedZero = latch.await(1, TimeUnit.MINUTES)
+                        assertTrue(reachedZero)
+
+                        unsubscribe()
+                    } catch (e: AssertionError) {
+                        failures.add(e)
+                    } catch (e: Exception) {
+                        errors.add(e)
+                    }
+
+                    val currentTimeMillis = System.currentTimeMillis()
+                    if (currentTimeMillis - startTimeMillis >= maxExecutionTimeMillis) break
+                }
+            }
+            th.start().also { threads.add(th) }
+        }
+
+        threads.forEach { it.join() }
+        publisherThread.interrupt()
+        publisherThread.join()
+
+        assertEquals(messages.toList(), events.map { it.message }.toSet().toList())
+
+        if (failures.isNotEmpty()) throw failures.peek()
+        if (errors.isNotEmpty()) throw errors.peek()
+    }
+
+    @RepeatedTest(10)
+    fun `stress test with simultaneous subscription and unSubscriptions while periodic publication of a message in multiple topics and verify that all events are received in the correct order`() {
+        // Arrange
+        val topicsAndMessages = (1..NUMBER_OF_TOPICS).associate {
+            newRandomTopic() to ConcurrentLinkedQueue<String>()
+        }
+        val lock = ReentrantLock()
+        val maxExecutionTimeMillis = 60000 // 1 minute
+
+        val failures = ConcurrentLinkedQueue<AssertionError>()
+        val errors = ConcurrentLinkedQueue<Exception>()
+        val publisherThreads = ConcurrentLinkedQueue<Thread>()
+        val threads = ConcurrentLinkedQueue<Thread>()
+        val startTimeMillis2 = System.currentTimeMillis()
+
+        topicsAndMessages.forEach { entry ->
+            val publisherThread = Thread {
+                while (!Thread.currentThread().isInterrupted) {
+                    lock.withLock {
+                        newRandomMessage()
+                            .also {
+                                getRandomBrokerInstance().publish(
+                                    topic = entry.key,
+                                    message = it
+                                )
+                            }
+                            .also {
+                                entry.value.offer(it)
+                            }
+                    }
+                    Thread.sleep(2000) // 2 seconds
+
+                }
+            }
+            publisherThread.start().also { publisherThreads.add(publisherThread) }
+        }
+
+        val events = ConcurrentLinkedQueue<Event>()
+        topicsAndMessages.forEach { entry ->
+            val th = Thread {
+                while (true) {
+                    val latch = CountDownLatch(1)
+                    val unsubscribe = getRandomBrokerInstance().subscribe(
+                        topic = entry.key,
+                        handler = { event ->
+                            events.add(event)
+                            latch.countDown()
+                        }
+                    )
+                    val reachedZero = latch.await(1, TimeUnit.MINUTES)
+                    assertTrue(reachedZero)
+                    unsubscribe()
+                    val currentTimeMillis = System.currentTimeMillis()
+                    if (currentTimeMillis - startTimeMillis2 >= maxExecutionTimeMillis) break
+                }
+            }
+            th.start().also { threads.add(th) }
+        }
+        threads.forEach { it.join() }
+        publisherThreads.forEach { it.interrupt() }
+        publisherThreads.forEach { it.join() }
+
+        topicsAndMessages.forEach { pair ->
+            val originalList = pair.value.toList()
+            val receivedList = events.filter { it.topic == pair.key }.map { it.message }.toSet().toList()
+            assertEquals(originalList, receivedList)
+        }
+        if (failures.isNotEmpty()) throw failures.peek()
+        if (errors.isNotEmpty()) throw errors.peek()
+    }
+
     @Test
     fun `cannot invoke method shutdown twice`() {
         // Arrange
