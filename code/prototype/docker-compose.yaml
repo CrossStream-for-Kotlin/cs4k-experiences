@@ -12,6 +12,30 @@ services:
       - POSTGRES_DB=db
     ports:
       - 5432:5432
+
+  spring-service:
+    build:
+      context: .
+      dockerfile: code/prototype/tests/Dockerfile-spring
+    environment:
+      PORT: 8080
+      DB_URL: "jdbc:postgresql://db-tests:5432/db?user=dbuser&password=changeit"
+
+  nginx:
+    container_name: nginx
+    build:
+      context: .
+      dockerfile: code/prototype/tests/Dockerfile-nginx
+    ports:
+      - "8088:8088"
+
+  # Just a machine running ubuntu, with 'dig' installed so that we can observe the docker compose environment.
+  ubuntu:
+    container_name: ubuntu
+    build:
+      context: .
+      dockerfile: code/prototype/tests/Dockerfile-ubuntu
+    tty: true
   rabbit:
     image: rabbitmq:alpine
     ports:

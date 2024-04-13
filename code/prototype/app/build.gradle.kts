@@ -77,3 +77,15 @@ tasks.named("check") {
     dependsOn("dbTestsWait")
     finalizedBy("dbTestsDown")
 }
+
+
+task<Exec>("composeUp") {
+    commandLine("docker-compose", "up", "--build", "--force-recreate","--scale", "spring-service=3")
+    dependsOn("extractUberJar")
+}
+
+task<Exec>("composeDown") {
+    commandLine("docker-compose", "down")
+}
+
+
