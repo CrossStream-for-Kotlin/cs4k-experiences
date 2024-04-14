@@ -26,6 +26,14 @@ class AssociatedSubscribers {
     }
 
     /**
+     * Get all topics
+     * @return The list of topics.
+     */
+    fun getAllKeys() = lock.withLock {
+        map.keys.toList()
+    }
+
+    /**
      * Add a subscriber to a topic.
      *
      * @param topic The topic to add the subscriber to.
@@ -40,6 +48,23 @@ class AssociatedSubscribers {
     }
 
     /**
+     * Add a subscriber to a topic.
+     *
+     * @param topic The topic to add the subscriber to.
+     * @param subscriber The subscriber to add.
+     */
+    fun addToKey(topic: String, subscriber: Subscriber, onTopicAdd: () -> Unit = {}) {
+        var newTopic = false
+        lock.withLock {
+            map.compute(topic) { _, subscribers ->
+                if (subscribers == null) newTopic = true
+                subscribers?.let { it + subscriber } ?: listOf(subscriber)
+            }
+        }
+        if (newTopic) onTopicAdd()
+    }
+
+    /**
      * Remove a subscriber from a topic.
      *
      * @param topic The topic to remove the subscriber from.
@@ -49,8 +74,30 @@ class AssociatedSubscribers {
         lock.withLock {
             map.computeIfPresent(topic) { _, subscribers ->
                 val subscriberToRemove = subscribers.find(predicate) ?: return@computeIfPresent subscribers
-                (subscribers - subscriberToRemove).ifEmpty { null }
+                (subscribers - subscriberToRemove).ifEmpty {
+                    null
+                }
             }
         }
+    }
+
+    /**
+     * Remove a subscriber from a topic.
+     *
+     * @param topic The topic to remove the subscriber from.
+     * @param predicate A predicate to determine which subscriber to remove.
+     */
+    fun removeIf(topic: String, predicate: (Subscriber) -> Boolean, onTopicRemove: () -> Unit = {}) {
+        var topicGone = false
+        lock.withLock {
+            map.computeIfPresent(topic) { _, subscribers ->
+                val subscriberToRemove = subscribers.find(predicate) ?: return@computeIfPresent subscribers
+                (subscribers - subscriberToRemove).ifEmpty {
+                    topicGone = true
+                    null
+                }
+            }
+        }
+        if (topicGone) onTopicRemove()
     }
 }

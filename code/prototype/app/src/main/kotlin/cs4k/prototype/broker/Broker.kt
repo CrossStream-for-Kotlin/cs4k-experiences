@@ -48,6 +48,8 @@ class Broker(
         !(throwable is SQLException && connectionPool.isClosed)
     }
 
+    private var isShutdown = false
+
     init {
         // Create the events table if it does not exist.
         createEventsTable()
@@ -71,7 +73,7 @@ class Broker(
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
     fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
-        if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
+        if (isShutdown || connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
 
         val subscriber = Subscriber(UUID.randomUUID(), handler)
         associatedSubscribers.addToKey(topic, subscriber)
@@ -92,7 +94,7 @@ class Broker(
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
-        if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::publish.name}.")
+        if (isShutdown || connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::publish.name}.")
 
         notify(topic, message, isLastMessage)
     }
@@ -105,7 +107,7 @@ class Broker(
      */
     fun shutdown() {
         if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
-
+        isShutdown = true
         unListen()
         connectionPool.close()
     }

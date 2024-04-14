@@ -16,7 +16,7 @@ services:
   spring-service:
     build:
       context: .
-      dockerfile: code/prototype/tests/Dockerfile-spring
+      dockerfile: ./tests/Dockerfile-spring
     environment:
       PORT: 8080
       DB_URL: "jdbc:postgresql://db-tests:5432/db?user=dbuser&password=changeit"
@@ -25,7 +25,7 @@ services:
     container_name: nginx
     build:
       context: .
-      dockerfile: code/prototype/tests/Dockerfile-nginx
+      dockerfile: ./tests/Dockerfile-nginx
     ports:
       - "8088:8088"
 
@@ -34,12 +34,19 @@ services:
     container_name: ubuntu
     build:
       context: .
-      dockerfile: code/prototype/tests/Dockerfile-ubuntu
+      dockerfile: ./tests/Dockerfile-ubuntu
     tty: true
-  rabbit:
-    image: rabbitmq:alpine
+
+  rabbit-mq:
+    container_name: rabbit-mq
+    build:
+      context: .
+      dockerfile: ./tests/Dockerfile-rabbit
     ports:
-      - 5672:5672
+      - "5672:5672"
+    environment:
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbitmq_stream advertised_host localhost
+
   redis:
     image: redis:alpine
     ports:

@@ -1,0 +1,5 @@
+FROM rabbitmq:alpine
+
+RUN rabbitmq-plugins enable rabbitmq_stream
+
+EXPOSE 5672
