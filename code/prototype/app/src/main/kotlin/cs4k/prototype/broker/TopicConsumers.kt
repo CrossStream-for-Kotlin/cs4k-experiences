@@ -39,20 +39,37 @@ class TopicConsumers {
         map[topic]?.offset
     }
 
+    /**
+     * Set topic with related info.
+     * @param topic The topic.
+     * @param value ConsumerTag associated with topic
+     * @param offset Offset associated with consumption of messages of topic.
+     */
     fun setTopic(topic: String, value: String, offset: Long) = lock.withLock {
         map[topic] = TopicInfo(value, offset)
     }
 
+    /**
+     * Set offset of the topic.
+     * @param topic The topic.
+     * @param offset Offset associated with consumption of messages of topic.
+     */
     fun setTopicOffset(topic: String, offset: Long) = lock.withLock {
         val topicInfo = requireNotNull(map[topic]) { "Detected offset change with no topic." }
         map[topic] = topicInfo.copy(offset = offset)
     }
 
+    /**
+     * Removes consumerTag associated with topic.
+     */
     fun removeConsumerTag(topic: String) = lock.withLock {
         val topicInfo = requireNotNull(map[topic]) { "Detected offset change with no topic." }
         map[topic] = topicInfo.copy(consumerTag = null)
     }
 
+    /**
+     * Iterates over every consumed topic and performs an action.
+     */
     fun forEachConsumedTopic(action: (topic: String) -> Unit) = lock.withLock {
         map.forEach { (topic, info) ->
             if (info.isBeingConsumed()) {
