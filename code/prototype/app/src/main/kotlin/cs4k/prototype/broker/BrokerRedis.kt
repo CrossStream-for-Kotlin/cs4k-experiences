@@ -18,7 +18,7 @@ import redis.clients.jedis.JedisPubSub
 import redis.clients.jedis.exceptions.JedisException
 import java.util.*
 
-@Component
+//@Component
 class BrokerRedis(
     private val dbConnectionPoolSize: Int = 10
 ) {

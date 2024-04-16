@@ -61,7 +61,7 @@ tasks.withType<Test> {
  *   and provide it with the same password as define on `tests/Dockerfile-db-test`
  */
 task<Exec>("dbTestsUp") {
-    commandLine("docker-compose", "up", "-d")
+    commandLine("docker-compose", "up", "-d", "--build", "db-tests")
 }
 
 task<Exec>("dbTestsWait") {
@@ -78,6 +78,16 @@ tasks.named("check") {
     finalizedBy("dbTestsDown")
 }
 
+task<Copy>("extractUberJar") {
+    dependsOn("assemble")
+    // opens the JAR containing everything...
+    from(zipTree("$buildDir/libs/app-$version.jar"))
+    // ... into the 'build/dependency' folder
+    into("build/dependency")
+}
+
+
+
 task<Exec>("composeUp") {
     commandLine("docker-compose", "up", "--build", "--force-recreate", "--scale", "spring-service=3")
     dependsOn("extractUberJar")
@@ -86,3 +96,5 @@ task<Exec>("composeUp") {
 task<Exec>("composeDown") {
     commandLine("docker-compose", "down")
 }
+
+

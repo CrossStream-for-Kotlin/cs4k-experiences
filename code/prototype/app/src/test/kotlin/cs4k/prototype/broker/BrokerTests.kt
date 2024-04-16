@@ -884,32 +884,34 @@ class BrokerTests {
 
         // Act
         val startTimeMillis = System.currentTimeMillis()
-        val events = ConcurrentLinkedQueue<Event>()
         repeat(NUMBER_OF_SUBSCRIBERS) {
             val th = Thread {
-                while (true) {
-                    val latch = CountDownLatch(1)
-                    val unsubscribe = getRandomBrokerInstance().subscribe(
-                        topic = topic,
-                        handler = { event ->
-                            events.add(event)
-                            latch.countDown()
-                        }
-                    )
-                    try {
+                try {
+                    val events = ConcurrentLinkedQueue<Event>()
+                    while (true) {
+                        val latch = CountDownLatch(1)
+                        val unsubscribe = getRandomBrokerInstance().subscribe(
+                            topic = topic,
+                            handler = { event ->
+                                events.add(event)
+                                latch.countDown()
+                            }
+                        )
                         // Assert
                         val reachedZero = latch.await(1, TimeUnit.MINUTES)
                         assertTrue(reachedZero)
 
                         unsubscribe()
-                    } catch (e: AssertionError) {
-                        failures.add(e)
-                    } catch (e: Exception) {
-                        errors.add(e)
-                    }
 
-                    val currentTimeMillis = System.currentTimeMillis()
-                    if (currentTimeMillis - startTimeMillis >= maxExecutionTimeMillis) break
+
+                        val currentTimeMillis = System.currentTimeMillis()
+                        if (currentTimeMillis - startTimeMillis >= maxExecutionTimeMillis) break
+                    }
+                    assertEquals(messages.toList(), events.map { it.message }.toSet().toList())
+                } catch (e: AssertionError) {
+                    failures.add(e)
+                } catch (e: Exception) {
+                    errors.add(e)
                 }
             }
             th.start().also { threads.add(th) }
@@ -919,7 +921,6 @@ class BrokerTests {
         publisherThread.interrupt()
         publisherThread.join()
 
-        assertEquals(messages.toList(), events.map { it.message }.toSet().toList())
 
         if (failures.isNotEmpty()) throw failures.peek()
         if (errors.isNotEmpty()) throw errors.peek()
@@ -962,24 +963,40 @@ class BrokerTests {
             publisherThread.start().also { publisherThreads.add(publisherThread) }
         }
 
-        val events = ConcurrentLinkedQueue<Event>()
         topicsAndMessages.forEach { entry ->
             val th = Thread {
-                while (true) {
-                    val latch = CountDownLatch(1)
-                    val unsubscribe = getRandomBrokerInstance().subscribe(
-                        topic = entry.key,
-                        handler = { event ->
-                            events.add(event)
-                            latch.countDown()
-                        }
-                    )
-                    val reachedZero = latch.await(1, TimeUnit.MINUTES)
-                    assertTrue(reachedZero)
-                    unsubscribe()
-                    val currentTimeMillis = System.currentTimeMillis()
-                    if (currentTimeMillis - startTimeMillis2 >= maxExecutionTimeMillis) break
+                try {
+                    val events = ConcurrentLinkedQueue<Event>()
+                    while (true) {
+                        val latch = CountDownLatch(1)
+                        val unsubscribe = getRandomBrokerInstance().subscribe(
+                            topic = entry.key,
+                            handler = { event ->
+                                events.add(event)
+                                latch.countDown()
+                            }
+                        )
+                        // Assert
+                        val reachedZero = latch.await(1, TimeUnit.MINUTES)
+                        assertTrue(reachedZero)
+
+                        unsubscribe()
+                        val currentTimeMillis = System.currentTimeMillis()
+                        if (currentTimeMillis - startTimeMillis2 >= maxExecutionTimeMillis) break
+                    }
+
+
+                    topicsAndMessages.filter { it.key==events.first().topic }.forEach { pair ->
+                        val originalList = pair.value.toList()
+                        val receivedList = events.map { it.message }.toSet().toList()
+                        assertEquals(originalList, receivedList)
+                    }
+                } catch (e: AssertionError) {
+                    failures.add(e)
+                } catch (e: Exception) {
+                    errors.add(e)
                 }
+
             }
             th.start().also { threads.add(th) }
         }
@@ -987,11 +1004,7 @@ class BrokerTests {
         publisherThreads.forEach { it.interrupt() }
         publisherThreads.forEach { it.join() }
 
-        topicsAndMessages.forEach { pair ->
-            val originalList = pair.value.toList()
-            val receivedList = events.filter { it.topic == pair.key }.map { it.message }.toSet().toList()
-            assertEquals(originalList, receivedList)
-        }
+
         if (failures.isNotEmpty()) throw failures.peek()
         if (errors.isNotEmpty()) throw errors.peek()
     }

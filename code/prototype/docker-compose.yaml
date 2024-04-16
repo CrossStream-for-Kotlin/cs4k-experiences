@@ -16,7 +16,12 @@ services:
   spring-service:
     build:
       context: .
-      dockerfile: ./tests/Dockerfile-spring
+      dockerfile: tests/Dockerfile-spring
+    depends_on:
+      - db-tests
+      - rabbit-mq
+      - redis
+    command: ["scripts/wait-for-postgres.sh", "localhost"]
     environment:
       PORT: 8080
       DB_URL: "jdbc:postgresql://db-tests:5432/db?user=dbuser&password=changeit"
@@ -25,7 +30,7 @@ services:
     container_name: nginx
     build:
       context: .
-      dockerfile: ./tests/Dockerfile-nginx
+      dockerfile: tests/Dockerfile-nginx
     ports:
       - "8088:8088"
 
@@ -34,7 +39,7 @@ services:
     container_name: ubuntu
     build:
       context: .
-      dockerfile: ./tests/Dockerfile-ubuntu
+      dockerfile: tests/Dockerfile-ubuntu
     tty: true
 
   rabbit-mq:
