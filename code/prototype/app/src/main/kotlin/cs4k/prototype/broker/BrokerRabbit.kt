@@ -2,16 +2,23 @@ package cs4k.prototype.broker
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
-import com.rabbitmq.client.AMQP
-import com.rabbitmq.client.ConnectionFactory
-import com.rabbitmq.client.DefaultConsumer
-import com.rabbitmq.client.Envelope
+import com.rabbitmq.stream.ByteCapacity
+import com.rabbitmq.stream.Consumer
+import com.rabbitmq.stream.Environment
+import com.rabbitmq.stream.Message
+import com.rabbitmq.stream.MessageHandler
+import com.rabbitmq.stream.OffsetSpecification
+import com.rabbitmq.stream.StreamException
 import cs4k.prototype.broker.BrokerException.BrokerDbLostConnectionException
 import cs4k.prototype.broker.BrokerException.BrokerTurnOffException
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
-import java.io.IOException
 import java.util.*
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicBoolean
 
 //@Component
 class BrokerRabbit {
@@ -26,53 +33,48 @@ class BrokerRabbit {
     private val retryExecutor = RetryExecutor()
 
     // Name of exchange used to publish messages to.
-    private val exchangeName = "cs4k-notifications"
+    private val exchangeName = "cs4k-notifications:"
 
-    // Channel used for notifications.
-    private val acceptingChannel = connectionFactory.newConnection().createChannel()
+    // Environment used to connect to message broker
+    private val environment = createEnvironment()
 
     // Retry condition.
     private val retryCondition: (throwable: Throwable) -> Boolean = { throwable ->
-        !(throwable is IOException && !acceptingChannel.isOpen)
+        throwable is StreamException
     }
 
-    private inner class TopicConsumer(val topic: String) : DefaultConsumer(acceptingChannel) {
+    /**
+     * Class that handles notifications.
+     */
+    private inner class BrokerMessageHandler : MessageHandler {
 
-        override fun handleDelivery(
-            consumerTag: String?,
-            envelope: Envelope?,
-            properties: AMQP.BasicProperties?,
-            body: ByteArray?
-        ) {
-            requireNotNull(properties)
-            requireNotNull(envelope)
-            requireNotNull(body)
-            if (topic == properties.headers["x-stream-filter-value"].toString()) {
-                val deliveryTag = envelope.deliveryTag
-                val event = deserialize(String(body)).copy(id = deliveryTag - 1)
-                val newOffset = properties.headers["x-stream-offset"].toString().toLong()
-                associatedSubscribers
-                    .getAll(event.topic)
-                    .forEach { subscriber -> subscriber.handler(event) }
-                acceptingChannel.basicAck(deliveryTag, false)
-                topicConsumers.setTopicOffset(topic, newOffset)
-            }
+        override fun handle(context: MessageHandler.Context?, message: Message?) {
+            requireNotNull(context)
+            requireNotNull(message)
+            val offset = context.offset()
+            val body = message.bodyAsBinary
+            val event = deserialize(String(body)).copy(id = offset)
+            logger.info("received message -> {}", event.toString())
+            associatedSubscribers
+                .getAll(event.topic)
+                .forEach { subscriber -> subscriber.handler(event) }
         }
     }
 
-    private var isShutdown = false
+    // Singleton shared by all consumers.
+    private val handler = BrokerMessageHandler()
 
-    private fun createStream() {
-        acceptingChannel.queueDeclare(
-            exchangeName,
-            true,
-            false,
-            false,
-            mapOf(
-                "x-queue-type" to "stream",
-                "x-max-length-bytes" to MAX_BYTES
-            )
-        )
+    // Flag that indicates if broker is gracefully shutting down.
+    private val isShutdown = AtomicBoolean(false)
+
+    /**
+     * Creates a new stream for a given topic.
+     */
+    private fun createStream(topic: String) {
+        environment.streamCreator()
+            .stream(exchangeName + topic)
+            .maxLengthBytes(ByteCapacity.B(MAX_BYTES))
+            .create()
     }
 
     /**
@@ -85,13 +87,15 @@ class BrokerRabbit {
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
     fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
-        if (isShutdown || !acceptingChannel.isOpen) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
+        if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
 
         val subscriber = Subscriber(UUID.randomUUID(), handler)
         associatedSubscribers.addToKey(topic, subscriber) {
             listen(topic)
         }
         logger.info("new subscriber topic '{}' id '{}", topic, subscriber.id)
+
+        getLastEvent(topic)?.let { event -> handler(event) }
 
         return { unsubscribe(topic, subscriber) }
     }
@@ -106,7 +110,7 @@ class BrokerRabbit {
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
-        if (isShutdown || !acceptingChannel.isOpen) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
+        if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
 
         notify(topic, message, isLastMessage)
     }
@@ -118,12 +122,14 @@ class BrokerRabbit {
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
     fun shutdown() {
-        if (!acceptingChannel.isOpen) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
-        isShutdown = true
-        topicConsumers.forEachConsumedTopic {
-            unListen(it)
+        if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
+        if (isShutdown.compareAndSet(false, true)) {
+            logger.info("shutting down...")
+            topicConsumers.getAllTopics().forEach { topic ->
+                unListen(topic)
+            }
+            environment.close()
         }
-        acceptingChannel.close()
     }
 
     /**
@@ -145,28 +151,26 @@ class BrokerRabbit {
      * Listen for notifications.
      */
     private fun listen(topic: String) {
-        createStream()
-        acceptingChannel.basicQos(100)
-        val offset = (topicConsumers.getOffset(topic) ?: 0L)
-        val consumerTag = acceptingChannel.basicConsume(
-            exchangeName,
-            false,
-            mapOf(
-                "x-stream-offset" to offset,
-                "x-stream-filter" to topic
-            ),
-            TopicConsumer(topic)
-        )
-        topicConsumers.setTopic(topic, consumerTag, offset)
+        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
+            createStream(topic)
+            val consumer = environment.consumerBuilder()
+                .stream(exchangeName + topic)
+                .offset(OffsetSpecification.last())
+                .messageHandler(handler)
+                .build()
+            topicConsumers.setConsumer(topic, consumer)
+        }, retryCondition)
     }
 
     /**
      * UnListen for notifications.
      */
     private fun unListen(topic: String) {
-        val consumerTag = topicConsumers.getConsumerTag(topic)
-        acceptingChannel.basicCancel(consumerTag)
-        topicConsumers.removeConsumerTag(topic)
+        val consumer = topicConsumers.getConsumer(topic)
+        consumer?.let { c ->
+            c.close()
+            topicConsumers.removeConsumer(topic)
+        }
     }
 
     /**
@@ -177,35 +181,76 @@ class BrokerRabbit {
      * @param isLastMessage Indicates if the message is the last one.
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
-    private fun notify(topic: String, message: String, isLastMessage: Boolean) {
+    private fun notify(topic: String, text: String, isLastMessage: Boolean) {
         retryExecutor.execute({ BrokerDbLostConnectionException() }, {
-            connectionFactory.newConnection().use {
-                val channel = it.createChannel()
-                val event = Event(topic, -1, message, isLastMessage)
-                channel.basicPublish(
-                    "",
-                    exchangeName,
-                    AMQP.BasicProperties.Builder()
-                        .headers(
-                            mapOf("x-stream-filter-value" to topic)
-                        ).build(),
-                    serialize(event).toByteArray()
-                )
+            createStream(topic)
+            val producer = environment.producerBuilder()
+                .stream(exchangeName + topic)
+                .build()
+            val message = producer.messageBuilder()
+                .addData(serialize(Event(topic, -1, text, isLastMessage)).toByteArray())
+                .build()
+            val latch = CountDownLatch(1)
+            producer.send(message) { _ ->
+                latch.countDown()
             }
+            latch.await()
+            producer.close()
         }, retryCondition)
+    }
+
+    /**
+     * Get the last event from the topic.
+     *
+     * @param topic The topic name.
+     * @return The last event of the topic, or null if the topic does not exist yet.
+     * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
+     */
+    private fun getLastEvent(topic: String): Event? {
+        var consumer: Consumer? = null
+        return runBlocking {
+            withTimeoutOrNull(100) {
+                suspendCancellableCoroutine { continuation ->
+                    createStream(topic)
+                    retryExecutor.execute({ BrokerDbLostConnectionException() }, {
+                        consumer = environment.consumerBuilder()
+                            .stream(exchangeName + topic)
+                            .offset(OffsetSpecification.last())
+                            .messageHandler { context, message ->
+                                requireNotNull(context)
+                                requireNotNull(message)
+                                val offset = context.offset()
+                                val body = message.bodyAsBinary
+                                val event = deserialize(String(body)).copy(id = offset)
+                                continuation.resumeWith(Result.success(event))
+                            }
+                            .build()
+                    }, retryCondition)
+                }
+            }.also {
+                // Closing consumer to release resources.
+                consumer?.close()
+            }
+        }
     }
 
     private companion object {
         // Logger instance for logging Broker class information.
         private val logger = LoggerFactory.getLogger(BrokerRabbit::class.java)
 
-        // Connection factory used to make connections to message broker.
-        private val connectionFactory = ConnectionFactory()
-
         // ObjectMapper instance for serializing and deserializing JSON.
         private val objectMapper = ObjectMapper().registerModules(KotlinModule.Builder().build())
 
-        private const val MAX_BYTES = 200_000_000
+        // Max size of a stream in bytes.
+        private const val MAX_BYTES = 200_000L
+
+        /**
+         * Function that creates an environment for message broker communication.
+         */
+        private fun createEnvironment() = Environment.builder()
+            .host("localhost")
+            .port(5552)
+            .build()
 
         /**
          * Serialize an event to JSON string.

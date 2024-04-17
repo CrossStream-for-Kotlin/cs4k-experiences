@@ -20,6 +20,9 @@ repositories {
 }
 
 dependencies {
+    // For coroutines
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4")
+
     // For Spring and JSON
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
@@ -29,7 +32,7 @@ dependencies {
     implementation("org.postgresql:postgresql:42.7.0")
 
     // For RabbitMQ
-    implementation("com.rabbitmq:amqp-client:5.20.0")
+    implementation("com.rabbitmq:stream-client:0.15.0")
 
     // For Redis
     implementation("redis.clients:jedis:5.1.0")
