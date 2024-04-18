@@ -92,7 +92,7 @@ task<Copy>("extractUberJar") {
 
 
 task<Exec>("composeUp") {
-    commandLine("docker-compose", "up", "--build", "--force-recreate", "--scale", "spring-service=3")
+    commandLine("docker-compose", "up", "--build", "--force-recreate", "--scale", "spring-service=1")
     dependsOn("extractUberJar")
 }
 
