@@ -57,8 +57,13 @@ tasks.withType<Test> {
     useJUnitPlatform()
 }
 
+tasks.named("check") {
+    dependsOn("dbTestsWait")
+    finalizedBy("dbTestsDown")
+}
+
 /**
- * DB related tasks
+ * PostgreSQl DB related tasks
  * - To run `psql` inside the container, do
  *      docker exec -ti db-tests psql -d db -U dbuser -W
  *   and provide it with the same password as define on `tests/Dockerfile-db-test`
@@ -76,11 +81,31 @@ task<Exec>("dbTestsDown") {
     commandLine("docker-compose", "down")
 }
 
-tasks.named("check") {
-    dependsOn("dbTestsWait")
-    finalizedBy("dbTestsDown")
+/**
+ * Redis related tasks
+ */
+task<Exec>("redisUp") {
+    commandLine("docker-compose", "up", "-d", "--build", "redis")
 }
 
+task<Exec>("redisDown") {
+    commandLine("docker-compose", "down")
+}
+
+/**
+ * RabbitMQ related tasks
+ */
+task<Exec>("rabbitUp") {
+    commandLine("docker-compose", "up", "-d", "--build", "rabbit-mq")
+}
+
+task<Exec>("rabbitDown") {
+    commandLine("docker-compose", "down")
+}
+
+/**
+ * Demonstration related tasks
+ */
 task<Copy>("extractUberJar") {
     dependsOn("assemble")
     // opens the JAR containing everything...
@@ -90,7 +115,7 @@ task<Copy>("extractUberJar") {
 }
 
 task<Exec>("composeUp") {
-    commandLine("docker-compose", "up", "--build", "--force-recreate", "--scale", "spring-service=1")
+    commandLine("docker-compose", "up", "--build", "--force-recreate", "--scale", "spring-service=3")
     dependsOn("extractUberJar")
 }
 

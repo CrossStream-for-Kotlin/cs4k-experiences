@@ -41,7 +41,6 @@ class BrokerTests {
             Broker(dbConnectionPoolSize = 1000)
         }
     }
-
      */
 
     @Test
@@ -805,30 +804,27 @@ class BrokerTests {
         // Arrange
         val topic = newRandomTopic()
         val messages = ConcurrentLinkedQueue<String>()
-        val lock = ReentrantLock()
         val maxExecutionTimeMillis = TEST_EXECUTION_TIME_MILLIS
 
         val publisherThread = Thread {
             while (!Thread.currentThread().isInterrupted) {
-                lock.withLock {
-                    newRandomMessage()
-                        .also {
-                            getRandomBrokerInstance().publish(
-                                topic = topic,
-                                message = it
-                            )
-                        }
-                        .also {
-                            messages.add(it)
-                        }
-                }
+                newRandomMessage()
+                    .also {
+                        getRandomBrokerInstance().publish(
+                            topic = topic,
+                            message = it
+                        )
+                    }
+                    .also {
+                        messages.add(it)
+                    }
                 Thread.sleep(PUBLISHER_DELAY_MILLIS)
             }
         }
         publisherThread.start()
 
-        val events = ConcurrentLinkedQueue<Event>()
         // Act
+        val events = ConcurrentLinkedQueue<Event>()
         val startTimeMillis = System.currentTimeMillis()
         while (true) {
             val latch = CountDownLatch(1)
@@ -851,6 +847,7 @@ class BrokerTests {
         publisherThread.interrupt()
         publisherThread.join()
 
+        // Assert
         assertEquals(messages.toList(), events.map { it.message }.toSet().toList())
     }
 
@@ -859,7 +856,6 @@ class BrokerTests {
         // Arrange
         val topic = newRandomTopic()
         val messages = ConcurrentLinkedQueue<String>()
-        val lock = ReentrantLock()
         val maxExecutionTimeMillis = TEST_EXECUTION_TIME_MILLIS
 
         val failures = ConcurrentLinkedQueue<AssertionError>()
@@ -868,16 +864,14 @@ class BrokerTests {
 
         val publisherThread = Thread {
             while (!Thread.currentThread().isInterrupted) {
-                lock.withLock {
-                    newRandomMessage()
-                        .also {
-                            getRandomBrokerInstance().publish(
-                                topic = topic,
-                                message = it
-                            )
-                        }
-                        .also { messages.offer(it) }
-                }
+                newRandomMessage()
+                    .also {
+                        getRandomBrokerInstance().publish(
+                            topic = topic,
+                            message = it
+                        )
+                    }
+                    .also { messages.offer(it) }
                 Thread.sleep(PUBLISHER_DELAY_MILLIS)
             }
         }
@@ -898,7 +892,8 @@ class BrokerTests {
                                 latch.countDown()
                             }
                         )
-                        // Assert
+
+                        // Assert [1]
                         val reachedZero = latch.await(SUBSCRIBE_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
                         assertTrue(reachedZero)
 
@@ -907,6 +902,8 @@ class BrokerTests {
                         val currentTimeMillis = System.currentTimeMillis()
                         if (currentTimeMillis - startTimeMillis >= maxExecutionTimeMillis) break
                     }
+
+                    // Assert [2]
                     assertEquals(messages.toList(), events.map { it.message }.toSet().toList())
                 } catch (e: AssertionError) {
                     failures.add(e)
@@ -931,36 +928,33 @@ class BrokerTests {
         val topicsAndMessages = (1..NUMBER_OF_TOPICS).associate {
             newRandomTopic() to ConcurrentLinkedQueue<String>()
         }
-        val lock = ReentrantLock()
         val maxExecutionTimeMillis = TEST_EXECUTION_TIME_MILLIS
 
         val failures = ConcurrentLinkedQueue<AssertionError>()
         val errors = ConcurrentLinkedQueue<Exception>()
         val publisherThreads = ConcurrentLinkedQueue<Thread>()
         val threads = ConcurrentLinkedQueue<Thread>()
-        val startTimeMillis2 = System.currentTimeMillis()
 
         topicsAndMessages.forEach { entry ->
             val publisherThread = Thread {
                 while (!Thread.currentThread().isInterrupted) {
-                    lock.withLock {
-                        newRandomMessage()
-                            .also {
-                                getRandomBrokerInstance().publish(
-                                    topic = entry.key,
-                                    message = it
-                                )
-                            }
-                            .also {
-                                entry.value.offer(it)
-                            }
-                    }
+                    newRandomMessage()
+                        .also {
+                            getRandomBrokerInstance().publish(
+                                topic = entry.key,
+                                message = it
+                            )
+                        }
+                        .also {
+                            entry.value.offer(it)
+                        }
                     Thread.sleep(PUBLISHER_DELAY_MILLIS)
                 }
             }
             publisherThread.start().also { publisherThreads.add(publisherThread) }
         }
 
+        val startTimeMillis = System.currentTimeMillis()
         topicsAndMessages.forEach { entry ->
             val th = Thread {
                 try {
@@ -974,20 +968,20 @@ class BrokerTests {
                                 latch.countDown()
                             }
                         )
-                        // Assert
+
+                        // Assert [1]
                         val reachedZero = latch.await(SUBSCRIBE_TIMEOUT_MILLIS, TimeUnit.MINUTES)
                         assertTrue(reachedZero)
 
                         unsubscribe()
                         val currentTimeMillis = System.currentTimeMillis()
-                        if (currentTimeMillis - startTimeMillis2 >= maxExecutionTimeMillis) break
+                        if (currentTimeMillis - startTimeMillis >= maxExecutionTimeMillis) break
                     }
 
-                    topicsAndMessages.filter { it.key == events.first().topic }.forEach { pair ->
-                        val originalList = pair.value.toList()
-                        val receivedList = events.map { it.message }.toSet().toList()
-                        assertEquals(originalList, receivedList)
-                    }
+                    // Assert [2]
+                    val originalList = topicsAndMessages[events.first().topic]?.toList()
+                    val receivedList = events.map { it.message }.toSet().toList()
+                    assertEquals(originalList, receivedList)
                 } catch (e: AssertionError) {
                     failures.add(e)
                 } catch (e: Exception) {
@@ -1007,7 +1001,7 @@ class BrokerTests {
     @Test
     fun `cannot invoke method shutdown twice`() {
         // Arrange
-        val broker = BrokerRabbit()
+        val broker = Broker()
         broker.shutdown()
 
         // Assert
@@ -1020,7 +1014,7 @@ class BrokerTests {
     @Test
     fun `cannot invoke method subscribe after shutdown`() {
         // Arrange
-        val broker = BrokerRabbit()
+        val broker = Broker()
         broker.shutdown()
 
         // Assert
@@ -1033,7 +1027,7 @@ class BrokerTests {
     @Test
     fun `cannot invoke method publish after shutdown`() {
         // Arrange
-        val broker = BrokerRabbit()
+        val broker = Broker()
         broker.shutdown()
 
         // Assert
@@ -1047,14 +1041,21 @@ class BrokerTests {
         private const val FIRST_EVENT_ID = 0L
         private const val NUMBER_OF_BROKER_INSTANCES = 5
         private const val NUMBER_OF_TOPICS = 10
-        private const val NUMBER_OF_SUBSCRIBERS = 20
+        private const val NUMBER_OF_SUBSCRIBERS = 200
         private const val NUMBER_OF_MESSAGES = 200
 
         private const val PUBLISHER_DELAY_MILLIS = 1250L
         private const val SUBSCRIBE_TIMEOUT_MILLIS = 60000L
         private const val TEST_EXECUTION_TIME_MILLIS = 60000L
 
-        private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { BrokerRabbit() }
+        // PostgreSQL
+        private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { Broker() }
+
+        // Redis
+        // private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { BrokerRedis() }
+
+        // RabbitMQ
+        // private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { BrokerRabbit() }
 
         private fun getRandomBrokerInstance() = brokerInstances.random()
 
