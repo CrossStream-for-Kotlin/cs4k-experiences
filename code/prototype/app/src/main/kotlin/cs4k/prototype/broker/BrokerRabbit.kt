@@ -15,19 +15,21 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import org.slf4j.LoggerFactory
-import org.springframework.stereotype.Component
 import java.util.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 
-//@Component
+// @Component
 class BrokerRabbit {
 
     // Association between topics and subscribers lists.
     private val associatedSubscribers = AssociatedSubscribers()
 
-    // Association between topics and consumer tags.
+    // Association between topics and consumers.
     private val topicConsumers = TopicConsumers()
+
+    // Association between topics and producers.
+    private val topicProducers = TopicProducers()
 
     // Retry executor.
     private val retryExecutor = RetryExecutor()
@@ -125,6 +127,10 @@ class BrokerRabbit {
         if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
         if (isShutdown.compareAndSet(false, true)) {
             logger.info("shutting down...")
+            topicProducers.getAllTopics().forEach { topic ->
+                topicProducers.getConsumer(topic)?.close()
+                topicProducers.removeConsumer(topic)
+            }
             topicConsumers.getAllTopics().forEach { topic ->
                 unListen(topic)
             }
@@ -184,18 +190,23 @@ class BrokerRabbit {
     private fun notify(topic: String, text: String, isLastMessage: Boolean) {
         retryExecutor.execute({ BrokerDbLostConnectionException() }, {
             createStream(topic)
-            val producer = environment.producerBuilder()
-                .stream(exchangeName + topic)
-                .build()
-            val message = producer.messageBuilder()
-                .addData(serialize(Event(topic, -1, text, isLastMessage)).toByteArray())
-                .build()
-            val latch = CountDownLatch(1)
-            producer.send(message) { _ ->
-                latch.countDown()
+            var producer = topicProducers.getConsumer(topic)
+            if (producer == null) {
+                producer = environment.producerBuilder()
+                    .stream(exchangeName + topic)
+                    .build()
+                topicProducers.setConsumer(topic, producer)
             }
-            latch.await()
-            producer.close()
+            producer?.let {
+                val message = producer.messageBuilder()
+                    .addData(serialize(Event(topic, -1, text, isLastMessage)).toByteArray())
+                    .build()
+                val latch = CountDownLatch(1)
+                producer.send(message) { _ ->
+                    latch.countDown()
+                }
+                latch.await()
+            }
         }, retryCondition)
     }
 

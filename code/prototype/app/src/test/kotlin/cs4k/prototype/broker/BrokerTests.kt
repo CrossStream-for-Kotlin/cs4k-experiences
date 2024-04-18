@@ -904,7 +904,6 @@ class BrokerTests {
 
                         unsubscribe()
 
-
                         val currentTimeMillis = System.currentTimeMillis()
                         if (currentTimeMillis - startTimeMillis >= maxExecutionTimeMillis) break
                     }
@@ -921,7 +920,6 @@ class BrokerTests {
         threads.forEach { it.join() }
         publisherThread.interrupt()
         publisherThread.join()
-
 
         if (failures.isNotEmpty()) throw failures.peek()
         if (errors.isNotEmpty()) throw errors.peek()
@@ -985,8 +983,7 @@ class BrokerTests {
                         if (currentTimeMillis - startTimeMillis2 >= maxExecutionTimeMillis) break
                     }
 
-
-                    topicsAndMessages.filter { it.key==events.first().topic }.forEach { pair ->
+                    topicsAndMessages.filter { it.key == events.first().topic }.forEach { pair ->
                         val originalList = pair.value.toList()
                         val receivedList = events.map { it.message }.toSet().toList()
                         assertEquals(originalList, receivedList)
@@ -996,14 +993,12 @@ class BrokerTests {
                 } catch (e: Exception) {
                     errors.add(e)
                 }
-
             }
             th.start().also { threads.add(th) }
         }
         threads.forEach { it.join() }
         publisherThreads.forEach { it.interrupt() }
         publisherThreads.forEach { it.join() }
-
 
         if (failures.isNotEmpty()) throw failures.peek()
         if (errors.isNotEmpty()) throw errors.peek()
@@ -1055,7 +1050,7 @@ class BrokerTests {
         private const val NUMBER_OF_SUBSCRIBERS = 20
         private const val NUMBER_OF_MESSAGES = 200
 
-        private const val PUBLISHER_DELAY_MILLIS = 1100L
+        private const val PUBLISHER_DELAY_MILLIS = 1250L
         private const val SUBSCRIBE_TIMEOUT_MILLIS = 60000L
         private const val TEST_EXECUTION_TIME_MILLIS = 60000L
 
