@@ -10,15 +10,17 @@ import cs4k.prototype.broker.BrokerException.UnexpectedBrokerException
 import cs4k.prototype.broker.ChannelCommandOperation.Listen
 import cs4k.prototype.broker.ChannelCommandOperation.UnListen
 import org.slf4j.LoggerFactory
-import org.springframework.stereotype.Component
 import redis.clients.jedis.Jedis
 import redis.clients.jedis.JedisPool
 import redis.clients.jedis.JedisPoolConfig
 import redis.clients.jedis.JedisPubSub
 import redis.clients.jedis.exceptions.JedisException
-import java.util.*
+import java.util.UUID
+import kotlin.concurrent.thread
 
-//@Component
+// V1: Jedis client pub/sub using Redis as an in-memory data structure (key-value pair)
+
+// @Component
 class BrokerRedis(
     private val dbConnectionPoolSize: Int = 10
 ) {
@@ -28,8 +30,8 @@ class BrokerRedis(
         checkDbConnectionPoolSize(dbConnectionPoolSize)
     }
 
-    // Channel to listen for notifications.
-    private val channelPrefix = "cs4k-channel:"
+    // Topic prefix to listen for notifications.
+    private val topicPrefix = "cs4k:"
 
     // Association between topics and subscribers lists.
     private val associatedSubscribers = AssociatedSubscribers()
@@ -42,27 +44,35 @@ class BrokerRedis(
         createConnectionPool(dbConnectionPoolSize)
     })
 
-    private val acceptingConnection = connectionPool.resource
-
     // Retry condition.
     private val retryCondition: (throwable: Throwable) -> Boolean = { throwable ->
         !(throwable is JedisException && connectionPool.isClosed)
     }
 
-    private var isShutdown = false
-
-    private inner class BrokerPubSub : JedisPubSub() {
-
-        override fun onMessage(channel: String?, message: String?) {
-            requireNotNull(message)
-            val event = deserialize(message)
-            associatedSubscribers
-                .getAll(event.topic)
-                .forEach { subscriber -> subscriber.handler(event) }
+    init {
+        // Start a new thread to listen for notifications.
+        thread {
+            listen()
         }
     }
 
-    private val pubSub = BrokerPubSub()
+    private val singletonPubSub = object : JedisPubSub() {
+        override fun onPSubscribe(pattern: String?, subscribedChannels: Int) {
+            logger.info("onPSubscribe called")
+            super.onPSubscribe(pattern, subscribedChannels)
+        }
+
+        override fun onPMessage(pattern: String?, channel: String?, message: String?) {
+            if (pattern == null || channel == null || message == null) {
+                throw UnexpectedBrokerException()
+            }
+            logger.info("new notification '{}' pattern '{}' channel '{}'", message, pattern, channel)
+            associatedSubscribers.getAll(channel.substringAfter(pattern)).let { subscribers ->
+                val event = deserialize(message)
+                subscribers.forEach { subscriber -> subscriber.handler(event) }
+            }
+        }
+    }
 
     /**
      * Subscribe to a topic.
@@ -74,12 +84,10 @@ class BrokerRedis(
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
     fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
-        if (isShutdown || connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
+        if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
 
         val subscriber = Subscriber(UUID.randomUUID(), handler)
-        associatedSubscribers.addToKey(topic, subscriber) {
-            listen(topic)
-        }
+        associatedSubscribers.addToKey(topic, subscriber)
         logger.info("new subscriber topic '{}' id '{}", topic, subscriber.id)
 
         getLastEvent(topic)?.let { event -> handler(event) }
@@ -97,7 +105,7 @@ class BrokerRedis(
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
-        if (isShutdown || connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::publish.name}.")
+        if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::publish.name}.")
 
         notify(topic, message, isLastMessage)
     }
@@ -110,11 +118,7 @@ class BrokerRedis(
      */
     fun shutdown() {
         if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
-        isShutdown = true
-        associatedSubscribers.getAllKeys().forEach { topic ->
-            unListen(topic)
-        }
-        acceptingConnection.close()
+        unListen()
         connectionPool.close()
     }
 
@@ -125,38 +129,35 @@ class BrokerRedis(
      * @param subscriber The subscriber who unsubscribed.
      */
     private fun unsubscribe(topic: String, subscriber: Subscriber) {
-        associatedSubscribers.removeIf(
-            topic,
-            predicate = { sub -> sub.id == subscriber.id },
-            onTopicRemove = { unListen(topic) }
-        )
+        associatedSubscribers.removeIf(topic) { sub -> sub.id == subscriber.id }
         logger.info("unsubscribe topic '{}' id '{}", topic, subscriber.id)
     }
 
     /**
      * Listen for notifications.
      */
-    private fun listen(topic: String) = Listen.execute(topic)
+    private fun listen() = Listen.execute()
 
     /**
      * UnListen for notifications.
      */
-    private fun unListen(topic: String) = UnListen.execute(topic)
+    private fun unListen() = UnListen.execute()
 
     /**
      * Execute the ChannelCommandOperation.
      *
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
-    private fun ChannelCommandOperation.execute(topic: String) {
-        val channel = channelPrefix + topic
+    private fun ChannelCommandOperation.execute() {
         retryExecutor.execute({ BrokerDbLostConnectionException() }, {
             when (this) {
-                Listen -> acceptingConnection.subscribe(pubSub, channel)
-                UnListen -> pubSub.unsubscribe(channel)
-            }
+                Listen -> connectionPool.resource.use {
+                    logger.info("psubscribe channel '{}'", "$topicPrefix*")
+                    it.psubscribe(singletonPubSub, "$topicPrefix*")
+                }
 
-            logger.info("$this channel '{}'", channel)
+                UnListen -> singletonPubSub.punsubscribe(topicPrefix)
+            }
         }, retryCondition)
     }
 
@@ -169,7 +170,6 @@ class BrokerRedis(
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
     private fun notify(topic: String, message: String, isLastMessage: Boolean) {
-        val channel = channelPrefix + topic
         retryExecutor.execute({ BrokerDbLostConnectionException() }, {
             connectionPool.resource.use { jedis ->
                 val event = Event(
@@ -178,7 +178,7 @@ class BrokerRedis(
                     message = message,
                     isLast = isLastMessage
                 )
-                jedis.publish(channel, serialize(event))
+                jedis.publish(topicPrefix + topic, serialize(event))
                 logger.info("notify topic '{}' event '{}", topic, event)
             }
         }, retryCondition)
@@ -257,7 +257,7 @@ class BrokerRedis(
         private fun createConnectionPool(dbConnectionPoolSize: Int = 10): JedisPool {
             val jedisPoolConfig = JedisPoolConfig()
             jedisPoolConfig.maxTotal = dbConnectionPoolSize
-            return JedisPool(Environment.getRedisHost(), Environment.getRedisPort())
+            return JedisPool(jedisPoolConfig, Environment.getRedisHost(), Environment.getRedisPort())
         }
 
         // ObjectMapper instance for serializing and deserializing JSON.
