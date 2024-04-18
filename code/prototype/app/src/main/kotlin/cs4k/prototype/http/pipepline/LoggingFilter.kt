@@ -20,10 +20,10 @@ class LoggingFilter : HttpFilter() {
         val runtimeBean = ManagementFactory.getRuntimeMXBean()
         val pidHostInfo = runtimeBean.name.split("@")
         val pid = pidHostInfo[0]
-        val hostName = pidHostInfo.getOrElse(1) { "Indisponível" }
+        val hostName = pidHostInfo.getOrElse(1) { "Unavailable" }
 
         if (request is HttpServletRequest) {
-            logger.info("Instância: $hostName, PID: $pid, Request: ${request.requestURI}")
+            logger.info("NODE: $hostName, PID: $pid, REQUEST: ${request.requestURI}")
         }
         chain.doFilter(request, response)
     }
