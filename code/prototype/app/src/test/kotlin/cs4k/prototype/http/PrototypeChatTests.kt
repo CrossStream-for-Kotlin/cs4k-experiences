@@ -230,7 +230,7 @@ class PrototypeChatTests {
 
                     // then: clients receives messages.
                     val eventsReceived = emitter
-                        .take(NUMBER_OF_MESSAGES.toLong())
+                        .take(Duration.ofMinutes(1))
                         .collectList()
                         .block(Duration.ofMinutes(5))
                         ?.toList() ?: fail("Messages not received.")
