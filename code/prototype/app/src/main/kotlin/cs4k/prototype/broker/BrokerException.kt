@@ -45,9 +45,17 @@ sealed class BrokerException(msg: String) : Exception(msg) {
      */
     class UnexpectedBrokerException(msg: String = UNEXPECTED_BROKER_EXCEPTION_DEFAULT_MESSAGE) : BrokerException(msg)
 
+    /**
+     * Exception indicating that there was a concurrent change.
+     *
+     * @param msg The message to show.
+     */
+    class BrokerOptimisticLockingException(msg: String = BROKER_OPTIMISTIC_LOCKING_DEFAULT_MESSAGE) : BrokerException(msg)
+
     companion object {
         const val UNEXPECTED_BROKER_EXCEPTION_DEFAULT_MESSAGE = "Something unexpected happened, try again later."
         const val BROKER_DB_CONNECTION_EXCEPTION_DEFAULT_MESSAGE = "Connection to the database could not be established."
         const val BROKER_DB_LOST_CONNECTION_EXCEPTION_DEFAULT_MESSAGE = "Lost connection to the database."
+        const val BROKER_OPTIMISTIC_LOCKING_DEFAULT_MESSAGE = "There was a concurrent change."
     }
 }

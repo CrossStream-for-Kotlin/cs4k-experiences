@@ -4,12 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import cs4k.prototype.broker.BrokerException.BrokerDbConnectionException
 import cs4k.prototype.broker.BrokerException.BrokerDbLostConnectionException
+import cs4k.prototype.broker.BrokerException.BrokerOptimisticLockingException
 import cs4k.prototype.broker.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.BrokerException.DbConnectionPoolSizeException
 import cs4k.prototype.broker.BrokerException.UnexpectedBrokerException
-import cs4k.prototype.broker.ChannelCommandOperation.Listen
-import cs4k.prototype.broker.ChannelCommandOperation.UnListen
 import org.slf4j.LoggerFactory
+import org.springframework.stereotype.Component
 import redis.clients.jedis.Jedis
 import redis.clients.jedis.JedisPool
 import redis.clients.jedis.JedisPoolConfig
@@ -18,9 +18,11 @@ import redis.clients.jedis.exceptions.JedisException
 import java.util.UUID
 import kotlin.concurrent.thread
 
-// V1: Jedis client pub/sub using Redis as an in-memory data structure (key-value pair)
+// V1:
+//      - Redis Pub/Sub using Redis as an in-memory data structure (key-value pair)
+//      - Jedis client
 
-// @Component
+@Component
 class BrokerRedis(
     private val dbConnectionPoolSize: Int = 10
 ) {
@@ -30,8 +32,9 @@ class BrokerRedis(
         checkDbConnectionPoolSize(dbConnectionPoolSize)
     }
 
-    // Topic prefix to listen for notifications.
+    // Topic prefix and pattern to subscribe.
     private val topicPrefix = "cs4k:"
+    private val topicPattern = "$topicPrefix*"
 
     // Association between topics and subscribers lists.
     private val associatedSubscribers = AssociatedSubscribers()
@@ -50,24 +53,22 @@ class BrokerRedis(
     }
 
     init {
-        // Start a new thread to listen for notifications.
+        // Start a new thread to subscribe and process events.
         thread {
-            listen()
+            subscribePattern()
         }
     }
 
     private val singletonPubSub = object : JedisPubSub() {
         override fun onPSubscribe(pattern: String?, subscribedChannels: Int) {
-            logger.info("onPSubscribe called")
+            logger.info("onPSubscribe called, pattern '{}' subscribedChannels '{}", pattern, subscribedChannels)
             super.onPSubscribe(pattern, subscribedChannels)
         }
 
         override fun onPMessage(pattern: String?, channel: String?, message: String?) {
-            if (pattern == null || channel == null || message == null) {
-                throw UnexpectedBrokerException()
-            }
-            logger.info("new notification '{}' pattern '{}' channel '{}'", message, pattern, channel)
-            associatedSubscribers.getAll(channel.substringAfter(pattern)).let { subscribers ->
+            if (pattern == null || channel == null || message == null) throw UnexpectedBrokerException()
+            logger.info("new event '{}' pattern '{}' channel '{}'", message, pattern, channel)
+            associatedSubscribers.getAll(channel.substringAfter(topicPrefix)).let { subscribers ->
                 val event = deserialize(message)
                 subscribers.forEach { subscriber -> subscriber.handler(event) }
             }
@@ -107,7 +108,7 @@ class BrokerRedis(
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
         if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::publish.name}.")
 
-        notify(topic, message, isLastMessage)
+        internalPublish(topic, message, isLastMessage)
     }
 
     /**
@@ -118,7 +119,7 @@ class BrokerRedis(
      */
     fun shutdown() {
         if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
-        unListen()
+        unsubscribePattern()
         connectionPool.close()
     }
 
@@ -134,42 +135,40 @@ class BrokerRedis(
     }
 
     /**
-     * Listen for notifications.
-     */
-    private fun listen() = Listen.execute()
-
-    /**
-     * UnListen for notifications.
-     */
-    private fun unListen() = UnListen.execute()
-
-    /**
-     * Execute the ChannelCommandOperation.
+     * Subscribe pattern.
      *
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
-    private fun ChannelCommandOperation.execute() {
+    private fun subscribePattern() {
         retryExecutor.execute({ BrokerDbLostConnectionException() }, {
-            when (this) {
-                Listen -> connectionPool.resource.use {
-                    logger.info("psubscribe channel '{}'", "$topicPrefix*")
-                    it.psubscribe(singletonPubSub, "$topicPrefix*")
-                }
-
-                UnListen -> singletonPubSub.punsubscribe(topicPrefix)
+            connectionPool.resource.use {
+                logger.info("psubscribe channel '{}'", topicPattern)
+                it.psubscribe(singletonPubSub, topicPattern)
             }
         }, retryCondition)
     }
 
     /**
-     * Notify the topic with the message.
+     * UnSubscribe pattern.
+     *
+     * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
+     */
+    private fun unsubscribePattern() {
+        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
+            logger.info("punsubscribe channel '{}'", topicPattern)
+            singletonPubSub.punsubscribe(topicPattern)
+        }, retryCondition)
+    }
+
+    /**
+     * Publish a message to a topic.
      *
      * @param topic The topic name.
      * @param message The message to send.
      * @param isLastMessage Indicates if the message is the last one.
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
-    private fun notify(topic: String, message: String, isLastMessage: Boolean) {
+    private fun internalPublish(topic: String, message: String, isLastMessage: Boolean) {
         retryExecutor.execute({ BrokerDbLostConnectionException() }, {
             connectionPool.resource.use { jedis ->
                 val event = Event(
@@ -189,7 +188,7 @@ class BrokerRedis(
      *  - If the topic does not exist, insert a new one.
      *  - If the topic exists, update the existing one.
      *
-     * @param conn The connection to be used to interact with the database.
+     * @param jedis The connection to be used to interact with the database.
      * @param topic The topic name.
      * @param message The message.
      * @param isLast Indicates if the message is the last one.
@@ -197,13 +196,35 @@ class BrokerRedis(
      * @throws UnexpectedBrokerException If something unexpected happens.
      */
     private fun getEventIdAndUpdateHistory(jedis: Jedis, topic: String, message: String, isLast: Boolean): Long {
-        val lastEvent = jedis.get(topic)
+        jedis.watch(topic)
+        val transaction = jedis.multi()
+        return try {
+            transaction
+                .apply {
+                    hsetnx(topic, "id", "-1")
+                    hincrBy(topic, "id", 1)
+                    hset(topic, "message", message)
+                    hset(topic, "isLast", isLast.toString())
+                }
+                .exec()
+                ?.getOrNull(1)
+                ?.toString()
+                ?.toLong()
+                ?: throw BrokerOptimisticLockingException()
+        } catch (e: JedisException) {
+            transaction.discard()
+            throw e
+        } finally {
+            jedis.unwatch()
+        }
+
+        /* val lastEvent = jedis.get(topic)
         jedis.watch(topic)
         val transaction = jedis.multi()
         val eventId = if (lastEvent == null) 0 else deserialize(lastEvent).id + 1
         transaction.set(topic, serialize(Event(topic, eventId, message, isLast)))
         transaction.exec()
-        return eventId
+        return eventId */
     }
 
     /**
@@ -216,12 +237,25 @@ class BrokerRedis(
     private fun getLastEvent(topic: String): Event? =
         retryExecutor.execute({ BrokerDbLostConnectionException() }, {
             connectionPool.resource.use { jedis ->
+                // jedis.watch(topic)
+                val lastEventProps = jedis.hgetAll(topic)
+                val id = lastEventProps["id"]?.toLong()
+                val message = lastEventProps["message"]
+                val isLast = lastEventProps["isLast"]?.toBoolean()
+                return@execute if (id != null && message != null && isLast != null) {
+                    Event(topic, id, message, isLast)
+                } else {
+                    null
+                }
+            }
+
+            /* connectionPool.resource.use { jedis ->
                 jedis.watch(topic)
                 val transaction = jedis.multi()
                 transaction.get(topic)
                 val event = transaction.exec().firstOrNull()?.toString()
                 if (event == null) null else deserialize(event)
-            }
+            } */
         }, retryCondition)
 
     private companion object {
@@ -280,3 +314,9 @@ class BrokerRedis(
         private fun deserialize(payload: String) = objectMapper.readValue(payload, Event::class.java)
     }
 }
+
+// V2:
+//      - Redis Streams
+//      - Letture client
+
+// ... In progress ...
