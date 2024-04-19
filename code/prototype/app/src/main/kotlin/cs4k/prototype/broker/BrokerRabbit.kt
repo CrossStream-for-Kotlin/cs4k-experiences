@@ -128,8 +128,8 @@ class BrokerRabbit {
         if (isShutdown.compareAndSet(false, true)) {
             logger.info("shutting down...")
             topicProducers.getAllTopics().forEach { topic ->
-                topicProducers.getConsumer(topic)?.close()
-                topicProducers.removeConsumer(topic)
+                topicProducers.getProducer(topic)?.close()
+                topicProducers.removeProducer(topic)
             }
             topicConsumers.getAllTopics().forEach { topic ->
                 unListen(topic)
@@ -190,12 +190,12 @@ class BrokerRabbit {
     private fun notify(topic: String, text: String, isLastMessage: Boolean) {
         retryExecutor.execute({ BrokerDbLostConnectionException() }, {
             createStream(topic)
-            var producer = topicProducers.getConsumer(topic)
+            var producer = topicProducers.getProducer(topic)
             if (producer == null) {
                 producer = environment.producerBuilder()
                     .stream(exchangeName + topic)
                     .build()
-                topicProducers.setConsumer(topic, producer)
+                topicProducers.setProducer(topic, producer)
             }
             producer?.let {
                 val message = producer.messageBuilder()

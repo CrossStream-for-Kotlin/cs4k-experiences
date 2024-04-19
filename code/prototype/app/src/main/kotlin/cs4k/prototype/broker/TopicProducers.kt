@@ -27,7 +27,7 @@ class TopicProducers {
      * @param topic The topic
      * @return The producer of said topic.
      */
-    fun getConsumer(topic: String) = lock.withLock {
+    fun getProducer(topic: String) = lock.withLock {
         map[topic]
     }
 
@@ -37,7 +37,7 @@ class TopicProducers {
      * @param consumer The producer of said topic.
      *
      */
-    fun setConsumer(topic: String, consumer: Producer) = lock.withLock {
+    fun setProducer(topic: String, consumer: Producer) = lock.withLock {
         map[topic] = consumer
     }
 
@@ -45,7 +45,7 @@ class TopicProducers {
      * Removes producer and removes topic registry.
      * @param topic The topic no longer has messages to be sent.
      */
-    fun removeConsumer(topic: String) = lock.withLock {
+    fun removeProducer(topic: String) = lock.withLock {
         map.remove(topic)
     }
 }
