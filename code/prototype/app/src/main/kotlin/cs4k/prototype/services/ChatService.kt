@@ -8,16 +8,24 @@ import cs4k.prototype.http.models.output.MessageOutputModel
 import jakarta.annotation.PreDestroy
 import org.springframework.stereotype.Component
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
+import java.time.Instant
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 @Component
 class ChatService(val broker: Broker) {
 
     private val generalGroup = "general"
 
-    @PreDestroy
-    private fun clanUp() {
-        broker.shutdown()
+    private val sseEmittersToKeepAlive = mutableListOf<SseEmitter>()
+    private val lock = ReentrantLock()
+
+    init {
+        Executors.newScheduledThreadPool(1).also {
+            it.scheduleAtFixedRate({ keepAlive() }, 2, 5, TimeUnit.SECONDS)
+        }
     }
 
     /**
@@ -27,6 +35,7 @@ class ChatService(val broker: Broker) {
      */
     fun newListener(group: String?): SseEmitter {
         val sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(30))
+        lock.withLock { sseEmittersToKeepAlive.add(sseEmitter) }
 
         val unsubscribeCallback = broker.subscribe(
             topic = group ?: generalGroup,
@@ -50,9 +59,11 @@ class ChatService(val broker: Broker) {
 
         sseEmitter.onCompletion {
             unsubscribeCallback()
+            lock.withLock { sseEmittersToKeepAlive.remove(sseEmitter) }
         }
         sseEmitter.onError {
             unsubscribeCallback()
+            lock.withLock { sseEmittersToKeepAlive.remove(sseEmitter) }
         }
 
         return sseEmitter
@@ -68,6 +79,28 @@ class ChatService(val broker: Broker) {
             topic = group ?: generalGroup,
             message = serializeMessageToJson(Message(message))
         )
+    }
+
+    /**
+     * Send a keep alive to all active sseEmitters.
+     */
+    private fun keepAlive() = lock.withLock {
+        val keepAlive = SseEvent.KeepAlive(Instant.now().epochSecond)
+        sseEmittersToKeepAlive.forEach { sseEmitter ->
+            try {
+                keepAlive.writeTo(sseEmitter)
+            } catch (ex: Exception) {
+                // Ignore
+            }
+        }
+    }
+
+    /**
+     * Spring shutdown hook.
+     */
+    @PreDestroy
+    private fun clanUp() {
+        broker.shutdown()
     }
 
     companion object {

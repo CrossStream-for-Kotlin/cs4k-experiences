@@ -9,13 +9,26 @@ import cs4k.prototype.http.models.output.GameOutputModel
 import cs4k.prototype.repository.TicTacToeRepository
 import org.springframework.stereotype.Component
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
+import java.time.Instant
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 @Component
 class TicTacToeService(
     val ticTacToeRepository: TicTacToeRepository,
     val broker: Broker
 ) {
+
+    private val sseEmittersToKeepAlive = mutableListOf<SseEmitter>()
+    private val lock = ReentrantLock()
+
+    init {
+        Executors.newScheduledThreadPool(1).also {
+            it.scheduleAtFixedRate({ keepAlive() }, 2, 5, TimeUnit.SECONDS)
+        }
+    }
 
     /**
      * Start a new game or join an existing one.
@@ -82,6 +95,7 @@ class TicTacToeService(
      */
     private fun listenForGameStates(gameId: Int): SseEmitter {
         val sseEmitter = SseEmitter(TimeUnit.MINUTES.toMillis(5))
+        lock.withLock { sseEmittersToKeepAlive.add(sseEmitter) }
 
         val unsubscribeCallback = broker.subscribe(
             topic = "gameId$gameId",
@@ -104,9 +118,11 @@ class TicTacToeService(
         )
         sseEmitter.onCompletion {
             unsubscribeCallback()
+            lock.withLock { sseEmittersToKeepAlive.remove(sseEmitter) }
         }
         sseEmitter.onError {
             unsubscribeCallback()
+            lock.withLock { sseEmittersToKeepAlive.remove(sseEmitter) }
         }
 
         return sseEmitter
@@ -123,6 +139,20 @@ class TicTacToeService(
             message = serializeGameInfoToJson(gameInfo),
             isLastMessage = gameInfo.game.isOver()
         )
+    }
+
+    /**
+     * Send a keep alive to all active sseEmitters.
+     */
+    private fun keepAlive() = lock.withLock {
+        val keepAlive = SseEvent.KeepAlive(Instant.now().epochSecond)
+        sseEmittersToKeepAlive.forEach { sseEmitter ->
+            try {
+                keepAlive.writeTo(sseEmitter)
+            } catch (ex: Exception) {
+                // Ignore
+            }
+        }
     }
 
     companion object {
