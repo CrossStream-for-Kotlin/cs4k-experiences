@@ -34,8 +34,8 @@ class BrokerRabbit {
     // Retry executor.
     private val retryExecutor = RetryExecutor()
 
-    // Name of exchange used to publish messages to.
-    private val exchangeName = "cs4k-notifications:"
+    // Prefix of the created streams.
+    private val streamsNamePrefix = "cs4k-notifications:"
 
     // Environment used to connect to message broker
     private val environment = createEnvironment()
@@ -72,7 +72,7 @@ class BrokerRabbit {
      */
     private fun createStream(topic: String) {
         environment.streamCreator()
-            .stream(exchangeName + topic)
+            .stream(streamsNamePrefix + topic)
             .maxLengthBytes(ByteCapacity.B(MAX_BYTES))
             .create()
     }
@@ -158,7 +158,7 @@ class BrokerRabbit {
         retryExecutor.execute({ BrokerDbLostConnectionException() }, {
             createStream(topic)
             val consumer = environment.consumerBuilder()
-                .stream(exchangeName + topic)
+                .stream(streamsNamePrefix + topic)
                 .offset(OffsetSpecification.last())
                 .messageHandler(handler)
                 .build()
@@ -191,7 +191,7 @@ class BrokerRabbit {
             var producer = topicProducers.getProducer(topic)
             if (producer == null) {
                 producer = environment.producerBuilder()
-                    .stream(exchangeName + topic)
+                    .stream(streamsNamePrefix + topic)
                     .build()
                 topicProducers.setProducer(topic, producer)
             }
@@ -223,7 +223,7 @@ class BrokerRabbit {
                     createStream(topic)
                     retryExecutor.execute({ BrokerDbLostConnectionException() }, {
                         consumer = environment.consumerBuilder()
-                            .stream(exchangeName + topic)
+                            .stream(streamsNamePrefix + topic)
                             .offset(OffsetSpecification.last())
                             .messageHandler { context, message ->
                                 val event = messageToEvent(context, message)
