@@ -45,26 +45,24 @@ class BrokerRabbit {
         throwable is StreamException
     }
 
-    /**
-     * Class that handles notifications.
-     */
-    private inner class BrokerMessageHandler : MessageHandler {
-
-        override fun handle(context: MessageHandler.Context?, message: Message?) {
-            requireNotNull(context)
-            requireNotNull(message)
-            val offset = context.offset()
-            val body = message.bodyAsBinary
-            val event = deserialize(String(body)).copy(id = offset)
-            logger.info("received message -> {}", event.toString())
-            associatedSubscribers
-                .getAll(event.topic)
-                .forEach { subscriber -> subscriber.handler(event) }
-        }
+    private fun messageToEvent(context: MessageHandler.Context?, message: Message?): Event {
+        requireNotNull(context)
+        requireNotNull(message)
+        val offset = context.offset()
+        val body = message.bodyAsBinary
+        return deserialize(String(body)).copy(id = offset)
     }
 
-    // Singleton shared by all consumers.
-    private val handler = BrokerMessageHandler()
+    /**
+     * Object that handles notifications.
+     */
+    private val handler = MessageHandler { context, message ->
+        val event = messageToEvent(context, message)
+        logger.info("received message -> {}", event.toString())
+        associatedSubscribers
+            .getAll(event.topic)
+            .forEach { subscriber -> subscriber.handler(event) }
+    }
 
     // Flag that indicates if broker is gracefully shutting down.
     private val isShutdown = AtomicBoolean(false)
@@ -183,7 +181,7 @@ class BrokerRabbit {
      * Notify the topic with the message.
      *
      * @param topic The topic name.
-     * @param message The message to send.
+     * @param text The message to send.
      * @param isLastMessage Indicates if the message is the last one.
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
@@ -219,7 +217,7 @@ class BrokerRabbit {
      */
     private fun getLastEvent(topic: String): Event? {
         var consumer: Consumer? = null
-        return runBlocking {
+        val lastEvent = runBlocking {
             withTimeoutOrNull(100) {
                 suspendCancellableCoroutine { continuation ->
                     createStream(topic)
@@ -228,21 +226,17 @@ class BrokerRabbit {
                             .stream(exchangeName + topic)
                             .offset(OffsetSpecification.last())
                             .messageHandler { context, message ->
-                                requireNotNull(context)
-                                requireNotNull(message)
-                                val offset = context.offset()
-                                val body = message.bodyAsBinary
-                                val event = deserialize(String(body)).copy(id = offset)
+                                val event = messageToEvent(context, message)
                                 continuation.resumeWith(Result.success(event))
                             }
                             .build()
                     }, retryCondition)
                 }
-            }.also {
-                // Closing consumer to release resources.
-                consumer?.close()
             }
         }
+        // Closing consumer to release resources.
+        consumer?.close()
+        return lastEvent
     }
 
     private companion object {
