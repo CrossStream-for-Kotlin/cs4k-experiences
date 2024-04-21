@@ -1,6 +1,8 @@
 package cs4k.prototype.broker
 
+import java.util.*
 import java.util.concurrent.locks.ReentrantLock
+import kotlin.collections.HashMap
 import kotlin.concurrent.withLock
 
 /**
@@ -31,6 +33,17 @@ class AssociatedSubscribers {
      */
     fun getAllKeys() = lock.withLock {
         map.keys.toList()
+    }
+
+    fun updateLastEventListened(id: UUID, topic: String, lastId: Long) = lock.withLock {
+        map.computeIfPresent(topic) { _, subscribers ->
+            subscribers.map { subscriber: Subscriber ->
+                if (subscriber.id == id)
+                    subscriber.copy(lastEventNotified = lastId)
+                else
+                    subscriber
+            }
+        }
     }
 
     /**

@@ -37,6 +37,7 @@ dependencies {
 
     // For RabbitMQ
     implementation("com.rabbitmq:stream-client:0.15.0")
+    implementation("com.rabbitmq:amqp-client:5.21.0")
 
     // For Redis
     implementation("redis.clients:jedis:5.1.0")
@@ -101,6 +102,10 @@ task<Exec>("redisDown") {
  */
 task<Exec>("rabbitUp") {
     commandLine("docker-compose", "up", "-d", "--build", "rabbit-mq")
+}
+
+task<Exec>("rabbitStreamsUp") {
+    commandLine("docker-compose", "up", "-d", "--build", "rabbit-mq-streams")
 }
 
 task<Exec>("rabbitDown") {

@@ -43,7 +43,13 @@ services:
     tty: true
 
   rabbit-mq:
-    container_name: rabbit-mq
+      container_name: rabbit-mq
+      image: rabbitmq:alpine
+      ports:
+        - "5552:5552"
+
+  rabbit-mq-streams:
+    container_name: rabbit-mq-streams
     build:
       context: .
       dockerfile: ./tests/Dockerfile-rabbit

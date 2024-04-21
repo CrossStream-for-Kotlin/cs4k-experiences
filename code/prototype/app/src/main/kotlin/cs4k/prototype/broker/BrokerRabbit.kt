@@ -31,6 +31,8 @@ class BrokerRabbit {
     // Association between topics and producers.
     private val topicProducers = TopicProducers()
 
+    private val topicOffsets = TopicOffsets()
+
     // Retry executor.
     private val retryExecutor = RetryExecutor()
 
@@ -59,6 +61,7 @@ class BrokerRabbit {
     private val handler = MessageHandler { context, message ->
         val event = messageToEvent(context, message)
         logger.info("received message -> {}", event.toString())
+        topicOffsets.setOffset(event.topic, context.offset())
         associatedSubscribers
             .getAll(event.topic)
             .forEach { subscriber -> subscriber.handler(event) }
@@ -224,10 +227,10 @@ class BrokerRabbit {
                     retryExecutor.execute({ BrokerDbLostConnectionException() }, {
                         consumer = environment.consumerBuilder()
                             .stream(streamsNamePrefix + topic)
-                            .offset(OffsetSpecification.last())
+                            .offset(OffsetSpecification.offset(topicOffsets.getOffset(topic)))
                             .messageHandler { context, message ->
-                                val event = messageToEvent(context, message)
-                                continuation.resumeWith(Result.success(event))
+                                if(context.offset() <= topicOffsets.getOffset(topic))
+                                    continuation.resumeWith(Result.success(messageToEvent(context, message)))
                             }
                             .build()
                     }, retryCondition)
