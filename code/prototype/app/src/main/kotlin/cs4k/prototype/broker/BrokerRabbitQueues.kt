@@ -64,7 +64,7 @@ class BrokerRabbitQueues {
          */
         private fun thereIsIdConflict(latestEvent: Event, event: Event) =
             latestEvent.id == event.id &&
-                (latestEvent.message != event.message && latestEvent.isLast != event.isLast)
+                    (latestEvent.message != event.message && latestEvent.isLast != event.isLast)
 
         override fun handleDelivery(
             consumerTag: String?,
@@ -82,19 +82,26 @@ class BrokerRabbitQueues {
                     logger.info("new event received {}", event)
                     processMessage(event)
                 }
+
                 thereIsIdConflict(latestEvent, event) -> {
                     val recentEvent = event.copy(id = event.id + 1)
                     logger.info("same event received with different id, latest updated {}", recentEvent)
                     processMessage(recentEvent)
                 }
-                latestEvent == event -> { logger.info("same event received, thrown away") }
-                latestEvent.id > event.id -> { logger.info("older event received, thrown away") }
+
+                latestEvent == event -> {
+                    logger.info("same event received, thrown away")
+                }
+
+                latestEvent.id > event.id -> {
+                    logger.info("older event received, thrown away")
+                }
             }
             acceptingChannel.basicAck(deliveryTag, false)
         }
     }
 
-    private val acceptingThread = thread {
+    init {
         listen()
     }
 
@@ -153,8 +160,6 @@ class BrokerRabbitQueues {
             unListen()
             acceptingChannel.close()
             acceptingConnection.close()
-            acceptingThread.interrupt()
-            acceptingThread.join()
         } else {
             throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
         }
