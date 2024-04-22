@@ -46,7 +46,7 @@ services:
       container_name: rabbit-mq
       image: rabbitmq:alpine
       ports:
-        - "5552:5552"
+        - "5672:5672"
 
   rabbit-mq-streams:
     container_name: rabbit-mq-streams

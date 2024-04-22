@@ -11,6 +11,8 @@ import cs4k.prototype.broker.BrokerException.BrokerTurnOffException
 import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.util.*
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 
 // @Component
 class BrokerRabbitQueues {
@@ -27,8 +29,9 @@ class BrokerRabbitQueues {
     // Consumer tag identifying the broker as consumer.
     private val consumerTag = "cs4k-broker:" + UUID.randomUUID().toString()
 
-    // Channel used for notifications.
-    private val acceptingChannel = connectionFactory.newConnection().createChannel()
+    // Connection and channel used for notifications.
+    private val acceptingConnection = connectionFactory.newConnection()
+    private val acceptingChannel = acceptingConnection.createChannel()
 
     // Storage of most recent events sent by other brokers and set by this broker.
     private val latestTopicEvents = LatestTopicEvents()
@@ -90,9 +93,12 @@ class BrokerRabbitQueues {
         }
     }
 
-    init {
+    private val acceptingThread = thread {
         listen()
     }
+
+    // Flag that indicates if broker is gracefully shutting down.
+    private val isShutdown = AtomicBoolean(false)
 
     /**
      * Subscribe to a topic.
@@ -104,12 +110,10 @@ class BrokerRabbitQueues {
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
     fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
-        if (!acceptingChannel.isOpen) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
+        if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
 
         val subscriber = Subscriber(UUID.randomUUID(), handler)
-        associatedSubscribers.addToKey(topic, subscriber) {
-            //listen(topic)
-        }
+        associatedSubscribers.addToKey(topic, subscriber)
         logger.info("new subscriber topic '{}' id '{}", topic, subscriber.id)
 
         getLastEvent(topic)?.let { event -> handler(event) }
@@ -117,8 +121,11 @@ class BrokerRabbitQueues {
         return { unsubscribe(topic, subscriber) }
     }
 
-    private fun getLastEvent(topic: String): Event? =
-        latestTopicEvents.getLatestReceivedEvent(topic) ?: latestTopicEvents.getLatestSentEvent(topic)
+    private fun getLastEvent(topic: String): Event? {
+        val event = latestTopicEvents.getLatestEvent(topic)
+        logger.info("last event received -> {}", event)
+        return event
+    }
 
 
     /**
@@ -131,8 +138,7 @@ class BrokerRabbitQueues {
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
-        if (!acceptingChannel.isOpen) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
-
+        if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
         notify(topic, message, isLastMessage)
     }
 
@@ -143,12 +149,14 @@ class BrokerRabbitQueues {
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
     fun shutdown() {
-        if (!acceptingChannel.isOpen) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
-
-        //associatedSubscribers.getAllKeys().forEach { topic ->
+        if (isShutdown.compareAndSet(false, true))  {
             unListen()
-         //}
-        acceptingChannel.close()
+            acceptingChannel.close()
+            acceptingConnection.close()
+            acceptingThread.interrupt()
+            acceptingThread.join()
+        } else
+            throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
     }
 
     /**
@@ -159,28 +167,27 @@ class BrokerRabbitQueues {
      */
     private fun unsubscribe(topic: String, subscriber: Subscriber) {
         associatedSubscribers.removeIf( topic ) { sub -> sub.id == subscriber.id }
-
         logger.info("unsubscribe topic '{}' id '{}", topic, subscriber.id)
     }
 
     /**
      * Listen for notifications.
      */
-    private fun listen(topic: String = "") {
+    private fun listen() {
         acceptingChannel.exchangeDeclare(exchangeName, "fanout")
         acceptingChannel.queueDeclare(
             consumerTag,
             true, false, false,
             mapOf("x-max-length" to 100_000)
         )
-        acceptingChannel.queueBind(consumerTag, exchangeName, topic)
-        acceptingChannel.basicConsume(consumerTag, false, consumerTag + topic, consumer)
+        acceptingChannel.queueBind(consumerTag, exchangeName, "")
+        acceptingChannel.basicConsume(consumerTag, false, consumerTag, consumer)
     }
 
     /**
      * UnListen for notifications.
      */
-    private fun unListen(topic: String = "") = acceptingChannel.basicCancel(consumerTag + topic)
+    private fun unListen() = acceptingChannel.basicCancel(consumerTag)
 
     /**
      * Notify the topic with the message.

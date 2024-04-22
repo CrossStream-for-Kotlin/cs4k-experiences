@@ -1044,7 +1044,7 @@ class BrokerTests {
         private const val NUMBER_OF_SUBSCRIBERS = 200
         private const val NUMBER_OF_MESSAGES = 200
 
-        private const val PUBLISHER_DELAY_MILLIS = 1250L
+        private const val PUBLISHER_DELAY_MILLIS = 2000L
         private const val SUBSCRIBE_TIMEOUT_MILLIS = 60000L
         private const val TEST_EXECUTION_TIME_MILLIS = 60000L
 
@@ -1056,6 +1056,7 @@ class BrokerTests {
 
         // RabbitMQ
         // private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { BrokerRabbit() }
+        // private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { BrokerRabbitQueues() }
 
         private fun getRandomBrokerInstance() = brokerInstances.random()
 

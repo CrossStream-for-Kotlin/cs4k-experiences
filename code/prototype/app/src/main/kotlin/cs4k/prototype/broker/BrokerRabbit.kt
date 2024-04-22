@@ -3,6 +3,7 @@ package cs4k.prototype.broker
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.rabbitmq.stream.ByteCapacity
+import com.rabbitmq.stream.ConfirmationStatus
 import com.rabbitmq.stream.Consumer
 import com.rabbitmq.stream.Environment
 import com.rabbitmq.stream.Message
@@ -31,7 +32,8 @@ class BrokerRabbit {
     // Association between topics and producers.
     private val topicProducers = TopicProducers()
 
-    private val topicOffsets = TopicOffsets()
+    // Collection of the most recent events - sent and received.
+    private val latestTopicEvents = LatestTopicEvents()
 
     // Retry executor.
     private val retryExecutor = RetryExecutor()
@@ -60,8 +62,8 @@ class BrokerRabbit {
      */
     private val handler = MessageHandler { context, message ->
         val event = messageToEvent(context, message)
+        latestTopicEvents.setLatestReceivedEvent(event.topic, event)
         logger.info("received message -> {}", event.toString())
-        topicOffsets.setOffset(event.topic, context.offset())
         associatedSubscribers
             .getAll(event.topic)
             .forEach { subscriber -> subscriber.handler(event) }
@@ -114,7 +116,6 @@ class BrokerRabbit {
      */
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
         if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
-
         notify(topic, message, isLastMessage)
     }
 
@@ -125,7 +126,6 @@ class BrokerRabbit {
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
     fun shutdown() {
-        if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
         if (isShutdown.compareAndSet(false, true)) {
             logger.info("shutting down...")
             topicProducers.getAllTopics().forEach { topic ->
@@ -136,6 +136,8 @@ class BrokerRabbit {
                 unListen(topic)
             }
             environment.close()
+        } else {
+            throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
         }
     }
 
@@ -192,21 +194,31 @@ class BrokerRabbit {
         retryExecutor.execute({ BrokerDbLostConnectionException() }, {
             createStream(topic)
             var producer = topicProducers.getProducer(topic)
+            var isFailed = false
             if (producer == null) {
                 producer = environment.producerBuilder()
                     .stream(streamsNamePrefix + topic)
                     .build()
                 topicProducers.setProducer(topic, producer)
             }
+            val event = Event(topic, -1, text, isLastMessage)
             producer?.let {
                 val message = producer.messageBuilder()
-                    .addData(serialize(Event(topic, -1, text, isLastMessage)).toByteArray())
+                    .addData(serialize(event).toByteArray())
                     .build()
                 val latch = CountDownLatch(1)
-                producer.send(message) { _ ->
+                producer.send(message) { confirmStatus ->
+                    if(confirmStatus.isConfirmed) {
+                        latestTopicEvents.setLatestSentEvent(topic, event)
+                    }
+                    else {
+                        isFailed = true
+                    }
                     latch.countDown()
                 }
                 latch.await()
+                if(isFailed)
+                    throw StreamException("message failed to be delivered.")
             }
         }, retryCondition)
     }
@@ -227,9 +239,8 @@ class BrokerRabbit {
                     retryExecutor.execute({ BrokerDbLostConnectionException() }, {
                         consumer = environment.consumerBuilder()
                             .stream(streamsNamePrefix + topic)
-                            .offset(OffsetSpecification.offset(topicOffsets.getOffset(topic)))
                             .messageHandler { context, message ->
-                                if(context.offset() <= topicOffsets.getOffset(topic))
+                                if(context.offset() >= latestTopicEvents.getLatestEventId(topic))
                                     continuation.resumeWith(Result.success(messageToEvent(context, message)))
                             }
                             .build()
