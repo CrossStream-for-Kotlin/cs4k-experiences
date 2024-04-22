@@ -41,6 +41,7 @@ dependencies {
 
     // For Redis
     implementation("redis.clients:jedis:5.1.0")
+    implementation("io.lettuce:lettuce-core:6.3.2.RELEASE")
 
     // For automated tests
     testImplementation("org.springframework.boot:spring-boot-starter-test")
