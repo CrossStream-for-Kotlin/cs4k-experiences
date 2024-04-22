@@ -38,10 +38,11 @@ class AssociatedSubscribers {
     fun updateLastEventListened(id: UUID, topic: String, lastId: Long) = lock.withLock {
         map.computeIfPresent(topic) { _, subscribers ->
             subscribers.map { subscriber: Subscriber ->
-                if (subscriber.id == id)
+                if (subscriber.id == id) {
                     subscriber.copy(lastEventNotified = lastId)
-                else
+                } else {
                     subscriber
+                }
             }
         }
     }

@@ -17,5 +17,4 @@ data class Subscriber(
 ) {
 
     constructor(id: UUID, handler: (event: Event) -> Unit) : this(id, -1, handler)
-
 }

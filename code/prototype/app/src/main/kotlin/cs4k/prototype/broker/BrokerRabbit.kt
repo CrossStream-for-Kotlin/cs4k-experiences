@@ -3,7 +3,6 @@ package cs4k.prototype.broker
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.rabbitmq.stream.ByteCapacity
-import com.rabbitmq.stream.ConfirmationStatus
 import com.rabbitmq.stream.Consumer
 import com.rabbitmq.stream.Environment
 import com.rabbitmq.stream.Message
@@ -208,17 +207,17 @@ class BrokerRabbit {
                     .build()
                 val latch = CountDownLatch(1)
                 producer.send(message) { confirmStatus ->
-                    if(confirmStatus.isConfirmed) {
+                    if (confirmStatus.isConfirmed) {
                         latestTopicEvents.setLatestSentEvent(topic, event)
-                    }
-                    else {
+                    } else {
                         isFailed = true
                     }
                     latch.countDown()
                 }
                 latch.await()
-                if(isFailed)
+                if (isFailed) {
                     throw StreamException("message failed to be delivered.")
+                }
             }
         }, retryCondition)
     }
@@ -240,8 +239,9 @@ class BrokerRabbit {
                         consumer = environment.consumerBuilder()
                             .stream(streamsNamePrefix + topic)
                             .messageHandler { context, message ->
-                                if(context.offset() >= latestTopicEvents.getLatestEventId(topic))
+                                if (context.offset() >= latestTopicEvents.getLatestEventId(topic)) {
                                     continuation.resumeWith(Result.success(messageToEvent(context, message)))
+                                }
                             }
                             .build()
                     }, retryCondition)

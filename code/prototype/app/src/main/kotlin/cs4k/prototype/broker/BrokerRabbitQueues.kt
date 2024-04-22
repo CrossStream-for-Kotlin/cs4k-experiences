@@ -64,10 +64,12 @@ class BrokerRabbitQueues {
          */
         private fun thereIsIdConflict(latestEvent: Event, event: Event) =
             latestEvent.id == event.id &&
-                    (latestEvent.message != event.message && latestEvent.isLast != event.isLast)
+                (latestEvent.message != event.message && latestEvent.isLast != event.isLast)
 
         override fun handleDelivery(
-            consumerTag: String?, envelope: Envelope?, properties: AMQP.BasicProperties?,
+            consumerTag: String?,
+            envelope: Envelope?,
+            properties: AMQP.BasicProperties?,
             body: ByteArray?
         ) {
             requireNotNull(envelope)
@@ -79,7 +81,6 @@ class BrokerRabbitQueues {
                 latestEvent == null || latestEvent.id < event.id -> {
                     logger.info("new event received {}", event)
                     processMessage(event)
-
                 }
                 thereIsIdConflict(latestEvent, event) -> {
                     val recentEvent = event.copy(id = event.id + 1)
@@ -127,7 +128,6 @@ class BrokerRabbitQueues {
         return event
     }
 
-
     /**
      * Publish a message to a topic.
      *
@@ -149,14 +149,15 @@ class BrokerRabbitQueues {
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
     fun shutdown() {
-        if (isShutdown.compareAndSet(false, true))  {
+        if (isShutdown.compareAndSet(false, true)) {
             unListen()
             acceptingChannel.close()
             acceptingConnection.close()
             acceptingThread.interrupt()
             acceptingThread.join()
-        } else
+        } else {
             throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
+        }
     }
 
     /**
@@ -166,7 +167,7 @@ class BrokerRabbitQueues {
      * @param subscriber The subscriber who unsubscribed.
      */
     private fun unsubscribe(topic: String, subscriber: Subscriber) {
-        associatedSubscribers.removeIf( topic ) { sub -> sub.id == subscriber.id }
+        associatedSubscribers.removeIf(topic) { sub -> sub.id == subscriber.id }
         logger.info("unsubscribe topic '{}' id '{}", topic, subscriber.id)
     }
 
@@ -177,7 +178,9 @@ class BrokerRabbitQueues {
         acceptingChannel.exchangeDeclare(exchangeName, "fanout")
         acceptingChannel.queueDeclare(
             consumerTag,
-            true, false, false,
+            true,
+            false,
+            false,
             mapOf("x-max-length" to 100_000)
         )
         acceptingChannel.queueBind(consumerTag, exchangeName, "")

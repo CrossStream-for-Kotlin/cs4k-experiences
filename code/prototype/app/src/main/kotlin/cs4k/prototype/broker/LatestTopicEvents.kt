@@ -20,7 +20,7 @@ class LatestTopicEvents {
     ) {
 
         constructor(event: Event) :
-                this(event.id, listOf(event.message, event.isLast.toString()).joinToString(";"))
+            this(event.id, listOf(event.message, event.isLast.toString()).joinToString(";"))
 
         fun toEvent(topic: String): Event {
             val splitPayload = payload.split(";")
@@ -28,7 +28,6 @@ class LatestTopicEvents {
             val isLast = splitPayload.last().toBoolean()
             return Event(topic, id, message, isLast)
         }
-
     }
 
     // Map that associates topics with consumers
