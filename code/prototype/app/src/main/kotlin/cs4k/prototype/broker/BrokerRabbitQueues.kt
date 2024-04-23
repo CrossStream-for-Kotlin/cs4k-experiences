@@ -45,7 +45,7 @@ class BrokerRabbitQueues {
         /**
          * Registers the event as the latest received and sends it to all subscribers.
          */
-        private fun processMessage(event: Event) {
+        private fun processMessage(event: Event, toResend: Boolean = false) {
             latestTopicEvents.setLatestReceivedEvent(event.topic, event)
             associatedSubscribers
                 .getAll(event.topic)
@@ -55,7 +55,9 @@ class BrokerRabbitQueues {
                         subscriber.handler(event)
                     }
                 }
-            notify(event)
+            if (toResend) {
+                notify(event)
+            }
         }
 
         /**
@@ -63,7 +65,7 @@ class BrokerRabbitQueues {
          */
         private fun thereIsIdConflict(latestEvent: Event, event: Event) =
             latestEvent.id == event.id &&
-                    (latestEvent.message != event.message && latestEvent.isLast != event.isLast)
+                (latestEvent.message != event.message && latestEvent.isLast != event.isLast)
 
         override fun handleDelivery(
             consumerTag: String?,
@@ -85,7 +87,7 @@ class BrokerRabbitQueues {
                 thereIsIdConflict(latestEvent, event) -> {
                     val recentEvent = event.copy(id = event.id + 1)
                     logger.info("same event received with different id, latest updated {}", recentEvent)
-                    processMessage(recentEvent)
+                    processMessage(recentEvent, true)
                 }
 
                 latestEvent == event -> {
