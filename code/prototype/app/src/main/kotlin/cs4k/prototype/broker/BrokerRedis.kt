@@ -177,7 +177,7 @@ class BrokerRedisV1(private val dbConnectionPoolSize: Int = 10) {
                     isLast = isLastMessage
                 )
                 jedis.publish(topicPrefix + topic, serialize(event))
-                logger.info("notify topic '{}' event '{}", topic, event)
+                logger.info("publish topic '{}' event '{}", topic, event)
             }
         }, retryCondition)
     }
@@ -201,7 +201,7 @@ class BrokerRedisV1(private val dbConnectionPoolSize: Int = 10) {
             transaction.hsetnx(topic, "id", "-1")
             transaction.hincrBy(topic, "id", 1)
             transaction.hset(topic, "message", message)
-            transaction.hset(topic, "isLast", isLast.toString())
+            transaction.hset(topic, "is_last", isLast.toString())
             transaction.exec()
                 ?.getOrNull(1)
                 ?.toString()
@@ -227,7 +227,7 @@ class BrokerRedisV1(private val dbConnectionPoolSize: Int = 10) {
             val lastEventProps = connectionPool.resource.use { jedis -> jedis.hgetAll(topic) }
             val id = lastEventProps["id"]?.toLong()
             val message = lastEventProps["message"]
-            val isLast = lastEventProps["isLast"]?.toBoolean()
+            val isLast = lastEventProps["is_last"]?.toBoolean()
             return@execute if (id != null && message != null && isLast != null) {
                 Event(topic, id, message, isLast)
             } else {
@@ -303,20 +303,24 @@ class BrokerRedisV2 {
     // Broker shutdown state.
     private var isShutdown = false
 
-    // Topic prefix to subscribe.
-    private val topicPrefix = "cs4k:"
-
     // Association between topics and subscribers lists.
     private val associatedSubscribers = AssociatedSubscribers()
 
     // Retry executor.
     private val retryExecutor = RetryExecutor()
 
-    // Redis Client.
-    private val redisClient = retryExecutor.execute({ BrokerDbConnectionException() }, { createRedisClient() })
+    // Redis Client for asynchronous operation.
+    private val redisClientForAsyncOperations = retryExecutor.execute({ BrokerDbConnectionException() }, {
+        createRedisClient()
+    })
+
+    // Redis Client for synchronous operation.
+    private val redisClientForSyncOperations = retryExecutor.execute({ BrokerDbConnectionException() }, {
+        createRedisClient()
+    })
 
     // Connection to subscribe, unsubscribe and publish.
-    private val pubSubConnection = redisClient.connectPubSub()
+    private val pubSubConnection = redisClientForAsyncOperations.connectPubSub()
 
     // Retry condition.
     private val retryCondition: (throwable: Throwable) -> Boolean = { _ -> true }
@@ -326,7 +330,7 @@ class BrokerRedisV2 {
         override fun message(channel: String?, message: String?) {
             if (channel == null || message == null) throw UnexpectedBrokerException()
             logger.info("new event '{}' channel '{}'", message, channel)
-            associatedSubscribers.getAll(channel.substringAfter(topicPrefix)).let { subscribers ->
+            associatedSubscribers.getAll(channel).let { subscribers ->
                 val event = deserialize(message)
                 subscribers.forEach { subscriber -> subscriber.handler(event) }
             }
@@ -387,7 +391,8 @@ class BrokerRedisV2 {
 
         pubSubConnection.removeListener(singletonPubSub)
         pubSubConnection.close()
-        redisClient.shutdown()
+        redisClientForAsyncOperations.shutdown()
+        redisClientForSyncOperations.shutdown()
         isShutdown = true
     }
 
@@ -415,7 +420,7 @@ class BrokerRedisV2 {
     private fun subscribeTopic(topic: String) {
         retryExecutor.execute({ BrokerDbLostConnectionException() }, {
             logger.info("subscribe topic '{}'", topic)
-            pubSubConnection.async().subscribe(topicPrefix + topic)
+            pubSubConnection.async().subscribe(topic)
         }, retryCondition)
     }
 
@@ -448,8 +453,8 @@ class BrokerRedisV2 {
                 message = message,
                 isLast = isLastMessage
             )
-            pubSubConnection.sync().publish(topicPrefix + topic, serialize(event))
-            logger.info("notify topic '{}' event '{}", topic, event)
+            pubSubConnection.async().publish(topic, serialize(event))
+            logger.info("publish topic '{}' event '{}", topic, event)
         }, retryCondition)
     }
 
@@ -465,24 +470,24 @@ class BrokerRedisV2 {
      * @throws UnexpectedBrokerException If something unexpected happens.
      */
     private fun getEventIdAndUpdateHistory(topic: String, message: String, isLast: Boolean): Long {
-        redisClient.connect().use { conn ->
+        redisClientForSyncOperations.connect().use { conn ->
             val sync = conn.sync()
-            // sync.watch(topic)
+            sync.watch(topic)
             sync.multi()
             try {
                 sync.hsetnx(topic, "id", "-1")
                 sync.hincrby(topic, "id", 1)
                 sync.hset(topic, "message", message)
-                sync.hset(topic, "isLast", isLast.toString())
+                sync.hset(topic, "is_last", isLast.toString())
                 val exec = sync.exec()
                 if (exec == null || exec.isEmpty) throw BrokerOptimisticLockingException()
                 return exec[1]
             } catch (e: Exception) {
-                // sync.discard()
+                sync.discard()
                 throw e
-            } // finally {
-            //     sync.unwatch()
-            // }
+            } finally {
+                sync.unwatch()
+            }
         }
     }
 
@@ -495,10 +500,10 @@ class BrokerRedisV2 {
      */
     private fun getLastEvent(topic: String): Event? =
         retryExecutor.execute({ BrokerDbLostConnectionException() }, {
-            val lastEventProps = redisClient.connect().use { conn -> conn.sync().hgetall(topic) }
+            val lastEventProps = redisClientForSyncOperations.connect().use { conn -> conn.sync().hgetall(topic) }
             val id = lastEventProps["id"]?.toLong()
             val message = lastEventProps["message"]
-            val isLast = lastEventProps["isLast"]?.toBoolean()
+            val isLast = lastEventProps["is_last"]?.toBoolean()
             return@execute if (id != null && message != null && isLast != null) {
                 Event(topic, id, message, isLast)
             } else {
@@ -542,3 +547,9 @@ class BrokerRedisV2 {
         private fun deserialize(payload: String) = objectMapper.readValue(payload, Event::class.java)
     }
 }
+
+// V3:
+//      - Redis Streams
+//      - Lettuce client
+
+// ...
