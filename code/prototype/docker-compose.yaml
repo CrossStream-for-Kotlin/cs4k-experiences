@@ -11,7 +11,7 @@ services:
       - POSTGRES_PASSWORD=changeit
       - POSTGRES_DB=db
     ports:
-      - 5432:5432
+      - "5432:5432"
 
   spring-service:
     build:
@@ -43,18 +43,12 @@ services:
     tty: true
 
   rabbit-mq:
-      container_name: rabbit-mq
-      image: rabbitmq:alpine
-      ports:
-        - "5672:5672"
-
-  rabbit-mq-streams:
-    container_name: rabbit-mq-streams
+    container_name: rabbit-mq
     build:
       context: .
       dockerfile: ./tests/Dockerfile-rabbit
     ports:
-      - "5552:5552"
+      - "5672:5672"
     environment:
       - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbitmq_stream advertised_host localhost
 
