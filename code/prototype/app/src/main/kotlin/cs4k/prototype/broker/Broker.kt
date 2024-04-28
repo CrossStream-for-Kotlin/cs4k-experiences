@@ -68,7 +68,7 @@ class Broker(
      *
      * @param topic The topic name.
      * @param handler The handler to be called when there is a new event.
-     * @return The callback to be called when unsubscribing.
+     * @return The method to be called when unsubscribing.
      * @throws BrokerTurnOffException If the broker is turned off.
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
