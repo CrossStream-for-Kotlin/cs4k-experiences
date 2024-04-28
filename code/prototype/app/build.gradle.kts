@@ -22,6 +22,7 @@ repositories {
 dependencies {
     // For coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive:1.6.4")
 
     // For Spring and JSON
     implementation("org.springframework.boot:spring-boot-starter-web")
