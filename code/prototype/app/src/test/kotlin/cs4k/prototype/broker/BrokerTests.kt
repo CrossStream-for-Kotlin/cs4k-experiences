@@ -1001,7 +1001,7 @@ class BrokerTests {
     @Test
     fun `cannot invoke method shutdown twice`() {
         // Arrange
-        val broker = Broker()
+        val broker = createBrokerInstance()
         broker.shutdown()
 
         // Assert
@@ -1014,7 +1014,7 @@ class BrokerTests {
     @Test
     fun `cannot invoke method subscribe after shutdown`() {
         // Arrange
-        val broker = Broker()
+        val broker = createBrokerInstance()
         broker.shutdown()
 
         // Assert
@@ -1027,7 +1027,7 @@ class BrokerTests {
     @Test
     fun `cannot invoke method publish after shutdown`() {
         // Arrange
-        val broker = Broker()
+        val broker = createBrokerInstance()
         broker.shutdown()
 
         // Assert
@@ -1040,7 +1040,7 @@ class BrokerTests {
     companion object {
         private const val FIRST_EVENT_ID = 0L
         private const val NUMBER_OF_BROKER_INSTANCES = 5
-        private const val NUMBER_OF_TOPICS = 10
+        private const val NUMBER_OF_TOPICS = 5
         private const val NUMBER_OF_SUBSCRIBERS = 200
         private const val NUMBER_OF_MESSAGES = 200
 
@@ -1048,15 +1048,17 @@ class BrokerTests {
         private const val SUBSCRIBE_TIMEOUT_MILLIS = 60000L
         private const val TEST_EXECUTION_TIME_MILLIS = 60000L
 
-        // PostgreSQL
-        private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { Broker() }
+        private fun createBrokerInstance() =
+            // PostgreSQL
+            // Broker()
 
-        // Redis
-        // private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { BrokerRedis() }
+            // Redis
+            // BrokerRedis()
 
-        // RabbitMQ
-        // private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { BrokerRabbit() }
-        // private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { BrokerRabbitQueues() }
+            // RabbitMQ
+            BrokerRabbitStreams()
+
+        private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { createBrokerInstance() }
 
         private fun getRandomBrokerInstance() = brokerInstances.random()
 

@@ -106,10 +106,6 @@ task<Exec>("rabbitUp") {
     commandLine("docker-compose", "up", "-d", "--build", "rabbit-mq")
 }
 
-task<Exec>("rabbitStreamsUp") {
-    commandLine("docker-compose", "up", "-d", "--build", "rabbit-mq-streams")
-}
-
 task<Exec>("rabbitDown") {
     commandLine("docker-compose", "down")
 }
