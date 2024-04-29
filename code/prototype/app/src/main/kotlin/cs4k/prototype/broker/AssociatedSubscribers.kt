@@ -28,11 +28,10 @@ class AssociatedSubscribers {
     }
 
     /**
-     * Get all topics
-     * @return The list of topics.
+     * Returns true if there are no subscribers for a given topic.
      */
-    fun getAllKeys() = lock.withLock {
-        map.keys.toList()
+    fun noSubscribers(topic: String) = lock.withLock {
+        map[topic]?.isEmpty() ?: true
     }
 
     fun updateLastEventListened(id: UUID, topic: String, lastId: Long) = lock.withLock {

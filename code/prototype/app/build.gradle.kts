@@ -22,6 +22,7 @@ repositories {
 dependencies {
     // For coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive:1.6.4")
 
     // For Spring and JSON
     implementation("org.springframework.boot:spring-boot-starter-web")
@@ -42,6 +43,7 @@ dependencies {
 
     // For Redis
     implementation("redis.clients:jedis:5.1.0")
+    implementation("io.lettuce:lettuce-core:6.3.2.RELEASE")
 
     // For automated tests
     testImplementation("org.springframework.boot:spring-boot-starter-test")

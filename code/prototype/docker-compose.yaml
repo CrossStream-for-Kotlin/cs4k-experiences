@@ -1,30 +1,27 @@
 version: "3.3"
 
 services:
-  ##db-tests:
-    ##container_name: db-tests
-    ##build:
-      ##context: .
-      ##dockerfile: ./tests/Dockerfile-db-test
-    ##environment:
-      ##- POSTGRES_USER=dbuser
-      ##- POSTGRES_PASSWORD=changeit
-      ##- POSTGRES_DB=db
-    ##ports:
-      ##- 5432:5432
+  db-tests:
+    container_name: db-tests
+    build:
+      context: .
+      dockerfile: ./tests/Dockerfile-db-test
+    environment:
+      - POSTGRES_USER=dbuser
+      - POSTGRES_PASSWORD=changeit
+      - POSTGRES_DB=db
+    ports:
+      - "5432:5432"
 
   spring-service:
     build:
       context: .
       dockerfile: tests/Dockerfile-spring
     depends_on:
-     ## - db-tests
-      ##rabbit-mq1:
-        ##condition: service_healthy
-        rabbit-mq:
-          condition: service_healthy
-    ##  - redis
-    command: ["scripts/wait-for-rabbitmq.sh", "rabbit-mq", "5672", "scripts/wait-for-postgres.sh", "localhost"]
+      - db-tests
+      - rabbit-mq
+      - redis
+    command: ["scripts/wait-for-rabbitmq.sh", "rabbit-mq", "5672","scripts/wait-for-postgres.sh", "localhost"]
     environment:
       PORT: 8080
       DB_URL: "jdbc:postgresql://db-tests:5432/db?user=dbuser&password=changeit"
