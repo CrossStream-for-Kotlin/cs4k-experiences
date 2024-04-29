@@ -7,6 +7,8 @@ import cs4k.prototype.broker.BrokerException.BrokerDbLostConnectionException
 import cs4k.prototype.broker.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.BrokerException.DbConnectionPoolSizeException
 import cs4k.prototype.broker.BrokerException.UnexpectedBrokerException
+import cs4k.prototype.broker.Environment.getRedisHost
+import cs4k.prototype.broker.Environment.getRedisPort
 import io.lettuce.core.ExperimentalLettuceCoroutinesApi
 import io.lettuce.core.Limit
 import io.lettuce.core.Range
@@ -15,14 +17,12 @@ import io.lettuce.core.RedisURI
 import io.lettuce.core.XReadArgs
 import io.lettuce.core.api.StatefulRedisConnection
 import io.lettuce.core.api.coroutines
-import io.lettuce.core.api.coroutines.RedisCoroutinesCommands
 import io.lettuce.core.api.sync.RedisCommands
 import io.lettuce.core.pubsub.RedisPubSubAdapter
 import io.lettuce.core.support.ConnectionPoolSupport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.apache.commons.pool2.impl.GenericObjectPool
@@ -37,11 +37,12 @@ import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 
+
 // V1:
 //      - Redis Pub/Sub using Redis as an in-memory data structure (key-value (hash) pair)
 //      - Jedis client
 
-class BrokerRedisPubSubV1(private val dbConnectionPoolSize: Int = 10) {
+class BrokerRedisPubSubJedis(private val dbConnectionPoolSize: Int = 10) {
 
     init {
         // Check database connection pool size.
@@ -80,6 +81,7 @@ class BrokerRedisPubSubV1(private val dbConnectionPoolSize: Int = 10) {
         override fun onPMessage(pattern: String?, channel: String?, message: String?) {
             if (pattern == null || channel == null || message == null) throw UnexpectedBrokerException()
             logger.info("new message '{}' channel '{}'", message, channel)
+
             val subscribers = associatedSubscribers.getAll(channel.substringAfter(channelPrefix))
             if (subscribers.isNotEmpty()) {
                 val event = deserialize(message)
@@ -132,6 +134,7 @@ class BrokerRedisPubSubV1(private val dbConnectionPoolSize: Int = 10) {
      */
     fun shutdown() {
         if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
+
         unsubscribePattern()
         connectionPool.close()
     }
@@ -201,7 +204,7 @@ class BrokerRedisPubSubV1(private val dbConnectionPoolSize: Int = 10) {
      *  - If the topic does not exist, insert a new one.
      *  - If the topic exists, update the existing one.
      *
-     * @param jedis The connection to be used to interact with the database.
+     * @param conn The connection to be used to interact with the database.
      * @param topic The topic name.
      * @param message The message.
      * @param isLast Indicates if the message is the last one.
@@ -253,7 +256,7 @@ class BrokerRedisPubSubV1(private val dbConnectionPoolSize: Int = 10) {
     private companion object {
 
         // Logger instance for logging Broker class information.
-        private val logger = LoggerFactory.getLogger(BrokerRedisPubSubV1::class.java)
+        private val logger = LoggerFactory.getLogger(BrokerRedisPubSubJedis::class.java)
 
         // Minimum database connection pool size allowed.
         const val MIN_DB_CONNECTION_POOL_SIZE = 2
@@ -284,7 +287,7 @@ class BrokerRedisPubSubV1(private val dbConnectionPoolSize: Int = 10) {
         private fun createConnectionPool(dbConnectionPoolSize: Int = 10): JedisPool {
             val jedisPoolConfig = JedisPoolConfig()
             jedisPoolConfig.maxTotal = dbConnectionPoolSize
-            return JedisPool(jedisPoolConfig, Environment.getRedisHost(), Environment.getRedisPort())
+            return JedisPool(jedisPoolConfig, getRedisHost(), getRedisPort())
         }
 
         // ObjectMapper instance for serializing and deserializing JSON.
@@ -312,7 +315,7 @@ class BrokerRedisPubSubV1(private val dbConnectionPoolSize: Int = 10) {
 //      - Redis Pub/Sub using Redis as an in-memory data structure (key-value (hash) pair)
 //      - Lettuce client
 
-class BrokerRedisPubSubV2(private val dbConnectionPoolSize: Int = 10) {
+class BrokerRedisPubSubLettuce(private val dbConnectionPoolSize: Int = 10) {
 
     init {
         // Check database connection pool size.
@@ -351,6 +354,7 @@ class BrokerRedisPubSubV2(private val dbConnectionPoolSize: Int = 10) {
         override fun message(channel: String?, message: String?) {
             if (channel == null || message == null) throw UnexpectedBrokerException()
             logger.info("new message '{}' channel '{}'", message, channel)
+
             val subscribers = associatedSubscribers.getAll(channel)
             if (subscribers.isNotEmpty()) {
                 val event = deserialize(message)
@@ -410,6 +414,7 @@ class BrokerRedisPubSubV2(private val dbConnectionPoolSize: Int = 10) {
      */
     fun shutdown() {
         if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
+
         pubSubConnection.removeListener(singletonRedisPubSubAdapter)
         pubSubConnection.close()
         connectionPool.close()
@@ -537,7 +542,7 @@ class BrokerRedisPubSubV2(private val dbConnectionPoolSize: Int = 10) {
     private companion object {
 
         // Logger instance for logging Broker class information.
-        private val logger = LoggerFactory.getLogger(BrokerRedisPubSubV2::class.java)
+        private val logger = LoggerFactory.getLogger(BrokerRedisPubSubLettuce::class.java)
 
         // Minimum database connection pool size allowed.
         const val MIN_DB_CONNECTION_POOL_SIZE = 2
@@ -564,11 +569,8 @@ class BrokerRedisPubSubV2(private val dbConnectionPoolSize: Int = 10) {
          *
          * @return The redis client instance.
          */
-        private fun createRedisClient(): RedisClient {
-            val host = Environment.getRedisHost()
-            val port = Environment.getRedisPort()
-            return RedisClient.create(RedisURI.create(host, port))
-        }
+        private fun createRedisClient() =
+            RedisClient.create(RedisURI.create(getRedisHost(), getRedisPort()))
 
         /**
          * Create a connection poll for database interactions.
@@ -611,7 +613,7 @@ class BrokerRedisPubSubV2(private val dbConnectionPoolSize: Int = 10) {
 //      - Redis Streams (1 stream - n topics)
 //      - Lettuce client
 
-class BrokerRedisStreamsV3(private val dbConnectionPoolSize: Int = 10) {
+class BrokerRedisStreamsDeprecated(private val dbConnectionPoolSize: Int = 10) {
 
     init {
         // Check database connection pool size.
@@ -728,6 +730,7 @@ class BrokerRedisStreamsV3(private val dbConnectionPoolSize: Int = 10) {
      */
     fun shutdown() {
         if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
+
         connectionPool.close()
         redisClient.shutdown()
         isShutdown = true
@@ -784,7 +787,7 @@ class BrokerRedisStreamsV3(private val dbConnectionPoolSize: Int = 10) {
                 connectionPool.borrowObject().use { conn -> getLastStreamMessages(conn.sync()) }
             }
             return@execute lastEvents
-                .find { msg -> msg.body["${EventProp.TOPIC}"] == topic }    // !!!
+                .find { msg -> msg.body["${EventProp.TOPIC}"] == topic }    // !!! Go through all the elements? !!!
                 ?.let { msg -> createEvent(topic, msg.body) }
         })
 
@@ -798,7 +801,7 @@ class BrokerRedisStreamsV3(private val dbConnectionPoolSize: Int = 10) {
         sync.xrevrange(
             streamKey,
             Range.unbounded(),
-            Limit.create(OFFSET, COUNT)    // !!!
+            Limit.create(OFFSET, COUNT)    // !!! How many elements to get? !!!
         )
 
     /**
@@ -824,11 +827,11 @@ class BrokerRedisStreamsV3(private val dbConnectionPoolSize: Int = 10) {
         // Read stream offset.
         private const val OFFSET = 0L
 
-        // Number of elements read from the stream.
+        // Number of elements to read from the stream.
         private const val COUNT = 500L
 
         // Logger instance for logging Broker class information.
-        private val logger = LoggerFactory.getLogger(BrokerRedisStreamsV3::class.java)
+        private val logger = LoggerFactory.getLogger(BrokerRedisStreamsDeprecated::class.java)
 
         // Minimum database connection pool size allowed.
         const val MIN_DB_CONNECTION_POOL_SIZE = 2
@@ -855,11 +858,8 @@ class BrokerRedisStreamsV3(private val dbConnectionPoolSize: Int = 10) {
          *
          * @return The redis client instance.
          */
-        private fun createRedisClient(): RedisClient {
-            val host = Environment.getRedisHost()
-            val port = Environment.getRedisPort()
-            return RedisClient.create(RedisURI.create(host, port))
-        }
+        private fun createRedisClient(): RedisClient =
+            RedisClient.create(RedisURI.create(getRedisHost(), getRedisPort()))
 
         /**
          * Create a connection poll for database interactions.
@@ -883,7 +883,7 @@ class BrokerRedisStreamsV3(private val dbConnectionPoolSize: Int = 10) {
 //      - Redis Streams (n streams - n topics)
 //      - Lettuce client
 
-class BrokerRedisStreamsV4(private val dbConnectionPoolSize: Int = 10) {
+class BrokerRedisStreams(private val dbConnectionPoolSize: Int = 10) {
 
     init {
         // Check database connection pool size.
@@ -899,8 +899,8 @@ class BrokerRedisStreamsV4(private val dbConnectionPoolSize: Int = 10) {
     // Association between topics and subscribers lists.
     private val associatedSubscribers = AssociatedSubscribers()
 
-    // Active topics.
-    private val activeTopic = ActiveTopics()
+    // Listening topics.
+    private val listeningTopic = ListeningTopics()
 
     // Retry executor.
     private val retryExecutor = RetryExecutor()
@@ -926,25 +926,25 @@ class BrokerRedisStreamsV4(private val dbConnectionPoolSize: Int = 10) {
         thread {
             // ... to launch coroutines in Coroutine Scope.
             runBlocking {
-                activeTopicsLoop(this)
+                listenTopicsLoop(this)
             }
         }
     }
 
     /**
-     * Check for new topics to activate.
+     * Check for new topics to listen.
      *
      * @param scope The Coroutine Scope to launch coroutines.
      */
-    private suspend fun activeTopicsLoop(scope: CoroutineScope) {
+    private suspend fun listenTopicsLoop(scope: CoroutineScope) {
         while (true) {
-            activeTopic.get().forEach { topic ->
+            listeningTopic.get().forEach {
                 val job = scope.launch(coroutineDispatcher) {
-                    listenStream(topic)
+                    listenStream(it.topic, it.startStreamMessageId)
                 }
-                activeTopic.alter(topic, job)
+                listeningTopic.alter(it.topic, it.startStreamMessageId, job)
             }
-            delay(2000)
+            delay(1000)
         }
     }
 
@@ -952,22 +952,22 @@ class BrokerRedisStreamsV4(private val dbConnectionPoolSize: Int = 10) {
      * Listen the stream associated to topic.
 
      * @param topic The topic name.
-     * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
+     * @param startStreamMessageId The identifier of the last message read from stream.
      */
     // Todo: Adds Retry.
     @OptIn(ExperimentalLettuceCoroutinesApi::class)
-    private suspend fun listenStream(topic: String) {
+    private suspend fun listenStream(topic: String, startStreamMessageId: String) {
         val coroutines = connection.coroutines()
-        var lastEventId = getStartReadStream(topic, coroutines)
+        var currentStreamMessageId = startStreamMessageId
 
         while (true) {
             coroutines
                 .xread(
                     XReadArgs.Builder.block(BLOCK_READ_TIME),
-                    XReadArgs.StreamOffset.from(streamKey.replace("*", topic), lastEventId)
+                    XReadArgs.StreamOffset.from(streamKey.replace("*", topic), currentStreamMessageId),
                 ).collect { msg ->
-                    logger.info("new message id '{}'", msg.id)
-                    lastEventId = msg.id
+                    logger.info("new message id '{}' topic '{}", msg.id, topic)
+                    currentStreamMessageId = msg.id
                     processMessage(topic, msg.body)
                 }
         }
@@ -998,15 +998,14 @@ class BrokerRedisStreamsV4(private val dbConnectionPoolSize: Int = 10) {
     fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
         if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
 
-        var firstSubscriber = false
+        val lastMessage = getLastStreamMessage(topic)
+        lastMessage?.let { msg -> handler(createEvent(topic, msg.body)) }
+
         val subscriber = Subscriber(UUID.randomUUID(), handler)
         associatedSubscribers.addToKey(topic, subscriber) {
-            firstSubscriber = true
-            activeTopic.add(topic)
+            listeningTopic.add(topic, lastMessage?.id ?: "0")
         }
         logger.info("new subscriber topic '{}' id '{}", topic, subscriber.id)
-
-        if (!firstSubscriber) getLastEvent(topic)?.let { event -> handler(event) }
 
         return { unsubscribe(topic, subscriber) }
     }
@@ -1034,6 +1033,7 @@ class BrokerRedisStreamsV4(private val dbConnectionPoolSize: Int = 10) {
      */
     fun shutdown() {
         if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
+
         connection.close()
         connectionPool.close()
         redisClient.shutdown()
@@ -1050,7 +1050,7 @@ class BrokerRedisStreamsV4(private val dbConnectionPoolSize: Int = 10) {
         associatedSubscribers.removeIf(
             topic = topic,
             predicate = { sub -> sub.id == subscriber.id },
-            onTopicRemove = { activeTopic.remove(topic) }
+            onTopicRemove = { listeningTopic.remove(topic) }
         )
         logger.info("unsubscribe topic '{}' id '{}", topic, subscriber.id)
     }
@@ -1072,8 +1072,8 @@ class BrokerRedisStreamsV4(private val dbConnectionPoolSize: Int = 10) {
                     "${EventProp.ID}" to (getLastEvent(topic, sync)?.let { it.id + 1 } ?: 0).toString(),
                     "${EventProp.IS_LAST}" to isLastMessage.toString()
                 )
-                sync.xadd(streamKey.replace("*", topic), newStreamEntry)
-                logger.info("publish topic '{}'", topic)
+                val id = sync.xadd(streamKey.replace("*", topic), newStreamEntry)
+                logger.info("publish topic '{}' id '{}", topic, id)
             }
         }, retryCondition)
     }
@@ -1086,19 +1086,24 @@ class BrokerRedisStreamsV4(private val dbConnectionPoolSize: Int = 10) {
      * @return The last event of the topic, or null if the topic does not exist yet.
      * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
      */
-    private fun getLastEvent(topic: String, sync: RedisCommands<String, String>? = null): Event? =
-        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
-            val lastEventProps = if (sync != null) {
-                getLastStreamMessage(topic, sync)
-            } else {
-                connectionPool.borrowObject().use { conn -> getLastStreamMessage(topic, conn.sync()) }
-            }
-            return@execute lastEventProps.firstOrNull()?.let { msg -> createEvent(topic, msg.body) }
-        })
+    private fun getLastEvent(topic: String, sync: RedisCommands<String, String>): Event? =
+        getLastStreamMessage(topic, sync)?.let { msg -> createEvent(topic, msg.body) }
 
     /**
      * Get the latest stream message.
      *
+     * @param topic The topic name.
+     * @return The latest stream message, or null if the stream is empty.
+     */
+    private fun getLastStreamMessage(topic: String) =
+        connectionPool.borrowObject().use { conn ->
+            getLastStreamMessage(topic, conn.sync())
+        }
+
+    /**
+     * Get the latest stream message.
+     *
+     * @param topic The topic name.
      * @param sync The RedisCommands API for the current connection.
      * @return The latest stream message, or null if the stream is empty.
      */
@@ -1107,22 +1112,7 @@ class BrokerRedisStreamsV4(private val dbConnectionPoolSize: Int = 10) {
             streamKey.replace("*", topic),
             Range.unbounded(),
             Limit.create(OFFSET, COUNT)
-        )
-
-    /**
-     * Get the identifier for the start of reading the stream.
-     *
-     * @param topic The topic name.
-     * @param coroutines The RedisCoroutinesCommands API for the current connection.
-     * @return The identifier for the start of reading the stream.
-     */
-    @OptIn(ExperimentalLettuceCoroutinesApi::class)
-    private suspend fun getStartReadStream(topic: String, coroutines: RedisCoroutinesCommands<String, String>) =
-        coroutines.xrevrange(
-            streamKey.replace("*", topic),
-            Range.unbounded(),
-            Limit.create(OFFSET, COUNT + 1)
-        ).toList().getOrNull(1)?.id ?: OFFSET.toString()
+        ).firstOrNull()
 
     /**
      * Create an event.
@@ -1142,19 +1132,19 @@ class BrokerRedisStreamsV4(private val dbConnectionPoolSize: Int = 10) {
     private companion object {
 
         // The time that blocks reading the stream.
-        const val BLOCK_READ_TIME = 5000L
+        const val BLOCK_READ_TIME = 2000L
 
         // Read stream offset.
-        const val OFFSET = 0L
+        private const val OFFSET = 0L
 
-        // Number of elements read from the stream.
-        const val COUNT = 1L
+        // Number of elements to read from the stream.
+        private const val COUNT = 1L
 
         // Coroutine dispatcher to process events.
         private val coroutineDispatcher = Executors.newFixedThreadPool(4).asCoroutineDispatcher()
 
         // Logger instance for logging Broker class information.
-        private val logger = LoggerFactory.getLogger(BrokerRedisStreamsV4::class.java)
+        private val logger = LoggerFactory.getLogger(BrokerRedisStreams::class.java)
 
         // Minimum database connection pool size allowed.
         const val MIN_DB_CONNECTION_POOL_SIZE = 2
