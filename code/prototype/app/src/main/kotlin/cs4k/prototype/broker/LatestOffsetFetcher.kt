@@ -15,7 +15,7 @@ import kotlin.time.Duration
 /**
  * Thread safe offset storage, used to consume from streams.
  */
-class LatestOffsetStore(
+class LatestOffsetFetcher(
     val fetchAction: (String) -> Long
 ) {
 
