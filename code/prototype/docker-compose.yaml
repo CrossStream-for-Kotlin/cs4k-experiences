@@ -1,27 +1,30 @@
 version: "3.3"
 
 services:
-  db-tests:
-    container_name: db-tests
-    build:
-      context: .
-      dockerfile: ./tests/Dockerfile-db-test
-    environment:
-      - POSTGRES_USER=dbuser
-      - POSTGRES_PASSWORD=changeit
-      - POSTGRES_DB=db
-    ports:
-      - 5432:5432
+  ##db-tests:
+    ##container_name: db-tests
+    ##build:
+      ##context: .
+      ##dockerfile: ./tests/Dockerfile-db-test
+    ##environment:
+      ##- POSTGRES_USER=dbuser
+      ##- POSTGRES_PASSWORD=changeit
+      ##- POSTGRES_DB=db
+    ##ports:
+      ##- 5432:5432
 
   spring-service:
     build:
       context: .
       dockerfile: tests/Dockerfile-spring
     depends_on:
-      - db-tests
-      - rabbit-mq
-      - redis
-    command: ["scripts/wait-for-postgres.sh", "localhost"]
+     ## - db-tests
+      ##rabbit-mq1:
+        ##condition: service_healthy
+        rabbit-mq:
+          condition: service_healthy
+    ##  - redis
+    command: ["scripts/wait-for-rabbitmq.sh", "rabbit-mq", "5672", "scripts/wait-for-postgres.sh", "localhost"]
     environment:
       PORT: 8080
       DB_URL: "jdbc:postgresql://db-tests:5432/db?user=dbuser&password=changeit"
@@ -43,22 +46,77 @@ services:
     tty: true
 
   rabbit-mq:
-      container_name: rabbit-mq
-      image: rabbitmq:alpine
-      ports:
-        - "5672:5672"
-
-  rabbit-mq-streams:
-    container_name: rabbit-mq-streams
+    container_name: rabbit-mq
     build:
       context: .
       dockerfile: ./tests/Dockerfile-rabbit
     ports:
-      - "5552:5552"
+      - "5672:5672"
     environment:
       - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbitmq_stream advertised_host localhost
 
-  redis:
-    image: redis:alpine
+
+  rabbit-mq1:
+    container_name: rabbit-mq1
+    image: rabbitmq:alpine
+    hostname: rabbit-mq1
     ports:
-      - "6379:6379"
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_ERLANG_COOKIE: "SWQOKODSQALRPCLNMEQG"
+      RABBITMQ_DEFAULT_USER: "user"
+      RABBITMQ_DEFAULT_PASS: "password"
+    networks:
+      - rabbitmq-cluster
+
+  rabbit-mq2:
+    container_name: rabbit-mq2
+    image: rabbitmq:alpine
+    hostname: rabbit-mq2
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    environment:
+      RABBITMQ_ERLANG_COOKIE: "SWQOKODSQALRPCLNMEQG"
+      RABBITMQ_DEFAULT_USER: "user"
+      RABBITMQ_DEFAULT_PASS: "password"
+    networks:
+      - rabbitmq-cluster
+    depends_on:
+      - rabbit-mq1
+
+  rabbit-mq3:
+    container_name: rabbit-mq3
+    image: rabbitmq:alpine
+    hostname: rabbit-mq3
+    ports:
+      - "5674:5672"
+      - "15674:15672"
+    environment:
+      RABBITMQ_ERLANG_COOKIE: "SWQOKODSQALRPCLNMEQG"
+      RABBITMQ_DEFAULT_USER: "user"
+      RABBITMQ_DEFAULT_PASS: "password"
+    networks:
+      - rabbitmq-cluster
+    depends_on:
+      - rabbit-mq1
+
+networks:
+  rabbitmq-cluster:
+    driver: bridge
+
+  ##rabbit-mq-streams:
+   ## container_name: rabbit-mq-streams
+    ##build:
+     ## context: .
+     ## dockerfile: ./tests/Dockerfile-rabbit
+    ##ports:
+     ## - "5552:5552"
+    ##environment:
+     ## - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbitmq_stream advertised_host localhost
+
+  ##redis:
+    ##image: redis:alpine
+    ##ports:
+    ##  - "6379:6379"
