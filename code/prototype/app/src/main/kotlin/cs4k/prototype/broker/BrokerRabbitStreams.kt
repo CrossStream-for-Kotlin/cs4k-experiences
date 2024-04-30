@@ -40,9 +40,6 @@ class BrokerRabbitStreams(
     // ID of broker used as name for the queue to receive offset requests.
     private val brokerId = "cs4k-broker:" + UUID.randomUUID().toString()
 
-    // Channel used for consumption from the offset request queue.
-    private val offsetShareChannel = channelPool.getChannel()
-
     // Exchange used to send offset requests to.
     private val offsetExchange = "cs4k-offset-exchange"
 
@@ -65,7 +62,12 @@ class BrokerRabbitStreams(
                     val queue = channel.queueDeclare().queue
                     val request = OffsetSharingRequest(brokerId, queue, topic)
                     channel.basicPublish(offsetExchange, "", null, request.toString().toByteArray())
-                    val consumerTag = channel.basicConsume(queue, true, emptyMap(), OffsetReceiverHandler(continuation))
+                    val consumerTag = channel.basicConsume(
+                        queue,
+                        true,
+                        emptyMap(),
+                        OffsetReceiverHandler(continuation, channel)
+                    )
                     channelPool.registerConsuming(channel, consumerTag)
                 }
             }
@@ -128,7 +130,7 @@ class BrokerRabbitStreams(
     /**
      * Consumer used to receive requests for offsets and sends them out as responses.
      */
-    private inner class OffsetShareHandler : DefaultConsumer(offsetShareChannel) {
+    private inner class OffsetShareHandler(channel: Channel) : DefaultConsumer(channel) {
         override fun handleDelivery(
             consumerTag: String?,
             envelope: Envelope?,
@@ -158,8 +160,8 @@ class BrokerRabbitStreams(
     /**
      * Consumer responsible for handling responses to offset requests.
      */
-    private inner class OffsetReceiverHandler(val continuation: Continuation<Long?>) :
-        DefaultConsumer(offsetShareChannel) {
+    private inner class OffsetReceiverHandler(val continuation: Continuation<Long?>, channel: Channel) :
+        DefaultConsumer(channel) {
         val received = AtomicBoolean(false)
         override fun handleDelivery(
             consumerTag: String?,
@@ -199,7 +201,8 @@ class BrokerRabbitStreams(
      */
     private fun enableOffsetSharing() {
         retryExecutor.execute({ BrokerDbLostConnectionException() }, {
-            offsetShareChannel.queueDeclare(
+            val channel = channelPool.getChannel()
+            channel.queueDeclare(
                 brokerId,
                 false,
                 true,
@@ -208,10 +211,10 @@ class BrokerRabbitStreams(
                     "x-max-length" to 100
                 )
             )
-            offsetShareChannel.exchangeDeclare(offsetExchange, "fanout")
-            offsetShareChannel.queueBind(brokerId, offsetExchange, "")
-            val consumerTag = offsetShareChannel.basicConsume(brokerId, OffsetShareHandler())
-            channelPool.registerConsuming(offsetShareChannel, consumerTag)
+            channel.exchangeDeclare(offsetExchange, "fanout")
+            channel.queueBind(brokerId, offsetExchange, "")
+            val consumerTag = channel.basicConsume(brokerId, OffsetShareHandler(channel))
+            channelPool.registerConsuming(channel, consumerTag)
         }, retryCondition)
     }
 
@@ -368,7 +371,6 @@ class BrokerRabbitStreams(
         if (isShutdown.compareAndSet(false, true)) {
             cleanExecutor.shutdown()
             latestOffsetFetcher.shutdown()
-            offsetShareChannel.close()
             channelPool.close()
         } else {
             throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
