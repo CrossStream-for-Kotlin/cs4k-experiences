@@ -19,7 +19,7 @@ import java.sql.SQLException
 import java.util.UUID
 import kotlin.concurrent.thread
 
-@Component
+//@Component
 class Broker(
     private val dbConnectionPoolSize: Int = 10
 ) {

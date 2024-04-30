@@ -20,7 +20,7 @@ services:
     depends_on:
       - db-tests
       - rabbit-mq
-      - redis
+      ##- redis
     command: ["scripts/wait-for-rabbitmq.sh", "rabbit-mq", "5672","scripts/wait-for-postgres.sh", "localhost"]
     environment:
       PORT: 8080

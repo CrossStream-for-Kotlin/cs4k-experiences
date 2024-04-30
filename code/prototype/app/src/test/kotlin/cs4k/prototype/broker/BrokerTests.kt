@@ -2,9 +2,12 @@ package cs4k.prototype.broker
 
 import cs4k.prototype.broker.BrokerException.BrokerTurnOffException
 import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.RepeatedTest
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.thread
 import kotlin.concurrent.withLock
@@ -20,7 +23,6 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 class BrokerTests {
-
     /*
     @Test
     fun `cannot create a broker with a negative database connection pool size`() {
@@ -43,6 +45,321 @@ class BrokerTests {
     }
      */
 
+    @Test
+    fun `new broker instance receives events from existing topics`() {
+        // Arrange
+        val topic = newRandomTopic()
+        val message = "teste"
+
+        var eventReceived = ""
+        val latch = CountDownLatch(2)
+
+        val brokerInstance1 = BrokerRabbitQueues()
+        brokerInstance1.publish(topic, message)
+
+        // Espera um tempo para garantir que o evento seja pulicado
+        Thread.sleep(5000)
+
+        val brokerInstance2 = BrokerRabbitQueues()
+        brokerInstance2.subscribe(topic) { event ->
+            // Assert
+            if (event.topic == topic && event.message == message) {
+                eventReceived = message
+                latch.countDown()
+            }
+        }
+
+        // Act
+        latch.await(10000, TimeUnit.MILLISECONDS)
+
+        // Assert
+
+        assertEquals(eventReceived, message)
+    }
+
+
+    @Test
+    fun `new broker instance begginig in the middle of the exectution and asking for topics that are in the pass`(){
+        // Arrange
+
+        val brokerInstance1 = BrokerRabbitQueues()
+        var list= mutableListOf<String>()
+        var l2 = mutableListOf<String>()
+        (1..100).forEach {
+            val topic = newRandomTopic()
+            val message = newRandomMessage()
+            //ji want to add randomly picking a topic and adding to the list
+            list.add(topic)
+            l2.add(message)
+            brokerInstance1.publish(topic, message)
+        }
+
+
+        // Espera um tempo para garantir que o evento seja pulicado
+        Thread.sleep(5000)
+
+        val brokerInstance2 = BrokerRabbitQueues()
+        val eventReceived = AtomicBoolean(false)
+        val latch = CountDownLatch(list.size)
+        var l = mutableListOf<String>()
+        list.forEach { topic ->
+            brokerInstance2.subscribe(topic) { event ->
+                // Assert
+                if (event.topic == topic) {
+                    l.add(event.message)
+                    eventReceived.set(true)
+                    latch.countDown()
+                }
+            }
+        }
+
+        // Assert
+
+        assertTrue(latch.await(10000, TimeUnit.MILLISECONDS))
+        println("l2 =${l2.size}  l=${l.size}")
+        assertEquals(l.toSet().toList(), l2)
+        assertTrue(eventReceived.get())
+    }
+
+    /*
+    @Test
+    fun `new broker instance retrieves last event after significant delay`() {
+        // Arrange
+        val topic = newRandomTopic()
+        val message = "persistent test message"
+        val brokerInstance1 = getRandomBrokerInstance()
+
+        // Primeira instância do broker publica um evento que deve ser persistido
+        brokerInstance1.publish(topic, message)
+
+        // Esperar um tempo significativo para simular o atraso na criação da nova instância
+        Thread.sleep(5000)  // Representa um "longo tempo"
+
+        // Criar uma nova instância do broker
+        val brokerInstance2 = getRandomBrokerInstance()
+        val eventReceived = AtomicBoolean(false)
+        val latch = CountDownLatch(1)
+
+        // Subscrever no tópico com a nova instância
+        brokerInstance2.subscribe(topic) { event ->
+            if (event.topic == topic && event.message == message) {
+                eventReceived.set(true)
+                latch.countDown()
+            }
+        }
+
+        // Act
+        val reachedZero = latch.await(SUBSCRIBE_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
+
+        // Assert
+        assertTrue(reachedZero, "The event was not received within the expected time.")
+        assertTrue(eventReceived.get(), "The event received does not match the expected event.")
+    }
+
+
+    @Test
+    fun `new broker instance receives events from existing topics3`() {
+        // Arrange
+        val topic = newRandomTopic()
+        val message = "teste"
+
+        val topic1 = newRandomTopic()
+        val message1 = "teste2"
+
+        val eventReceived = AtomicBoolean(false)
+        val latch = CountDownLatch(1)
+
+        val brokerInstance1 = getRandomBrokerInstance()
+        brokerInstance1.publish(topic, message)
+
+
+        println("goiaba")
+        val brokerInstance2 = getRandomBrokerInstance()
+        brokerInstance2.subscribe(topic) { event ->
+            // Assert
+            if (event.topic == topic && event.message == message) {
+                eventReceived.set(true)
+            }
+        }
+
+        // Act
+        val reachedZero = latch.await(SUBSCRIBE_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
+
+        // Assert
+        assertTrue(reachedZero, "The event was not received within the expected time.")
+        assertTrue(eventReceived.get(), "The event received does not match the expected event.")
+    }
+
+
+    @Test
+    fun `new broker instance receives events from existing topics2`() {
+        // Arrange
+        val topic = newRandomTopic()
+        val message = newRandomMessage()
+        val latch = CountDownLatch(1)
+
+        val list = mutableListOf<Pair<String, String>>()
+        val brokerInstance1 = getRandomBrokerInstance()
+        val listTopicEvents = (1..NUMBER_OF_MESSAGES).map { it ->
+            val t = newRandomTopic()
+            val m = newRandomMessage()
+            list.add(Pair(t, m))
+            brokerInstance1.publish(newRandomTopic(), newRandomMessage())
+            if (it == NUMBER_OF_MESSAGES) {
+                latch.countDown()
+            }
+        }
+
+
+        val brokerInstance2 = getRandomBrokerInstance()
+
+
+        // Act
+    }
+
+    @Test
+    fun `new broker instance receives exactly the same events from existing topics`() {
+        // Arrange
+        val numberOfTopics = 5
+        val latch = CountDownLatch(numberOfTopics)
+        val receivedEvents = ConcurrentHashMap<String, Event>()
+
+        val brokerInstance1 = getRandomBrokerInstance()
+        val topicsAndMessages = (1..numberOfTopics).map {
+            Pair(newRandomTopic(), newRandomMessage())
+        }
+
+        // Publicar eventos na primeira instância
+        topicsAndMessages.forEach { (topic, message) ->
+            brokerInstance1.publish(topic, message)
+        }
+
+        // Aguarde um pouco para garantir que os eventos sejam processados e publicados
+        Thread.sleep(10000)
+
+        // Segunda instância do broker
+        val brokerInstance2 = getRandomBrokerInstance()
+
+        // Inscrever no segundo broker para cada tópico
+        topicsAndMessages.forEach { (topic, message) ->
+            brokerInstance2.subscribe(topic) { event ->
+                latch.countDown()
+                if (event.message == message) {
+                    receivedEvents.putIfAbsent(topic, event)
+                }
+            }
+        }
+
+        // Act
+        val allEventsReceived = latch.await(5, TimeUnit.SECONDS)
+
+
+        // Assert
+        assertTrue(allEventsReceived, "Not all events were received within the timeout period.")
+        assertEquals(numberOfTopics, receivedEvents.size, "Not all topics received the correct events.")
+
+        // Verificar se os eventos recebidos são exatamente os mesmos que foram enviados
+        topicsAndMessages.forEach { (topic, message) ->
+            assertTrue(brokerInstance2.latestTopicEvents.showallEvents().map { it?.topic }.contains(topic))
+            val receivedEvent = brokerInstance2.latestTopicEvents.showallEvents().find { it?.topic == topic }
+            assertNotNull(receivedEvent, "Event not found for topic $topic.")
+            assertEquals(message, receivedEvent.message)
+        }
+    }
+
+    @Test
+    fun `new broker instance receives exactly the same events from existing topics6`() {
+        // Arrange
+        val numberOfTopics = 100
+        val latch = CountDownLatch(1)
+        val receivedEvents = ConcurrentHashMap<String, Event>()
+        val latch2 = CountDownLatch(numberOfTopics)
+        val brokerInstance1 = getRandomBrokerInstance()
+        val topicsAndMessages = (1..numberOfTopics).map {
+            Pair(newRandomTopic(), newRandomMessage())
+        }
+
+        val topic2 = newRandomTopic()
+        val message3 = newRandomMessage()
+        brokerInstance1.publish(topic2, message3)
+
+
+        topicsAndMessages.forEach { (topic, message) ->
+            brokerInstance1.publish(topic, message)
+            latch2.countDown()
+        }
+
+        latch2.await(5, TimeUnit.SECONDS)
+
+        Thread.sleep(10000)
+
+        println("Comecou depois de todos os publishers")
+
+        val brokerInstance2 = BrokerRabbitQueues()
+
+
+        brokerInstance2.subscribe(topic2) { event ->
+            if (event.message == message3) {
+                receivedEvents.putIfAbsent(topic2, event)
+            }
+            latch.countDown()
+        }
+
+        println("Eventos recebidos")
+        brokerInstance2.latestTopicEvents.showallEvents().forEach() {
+            println(it!!.topic)
+            println(it!!.message)
+        }
+        println("Fim dos eventos recebidos")
+
+        latch.await(15, TimeUnit.SECONDS)
+
+        assertEquals(receivedEvents[topic2]!!.message, message3)
+    }
+
+
+    @Test
+    fun `new broker instance retrieves last events for multiple topics`() {
+        // Arrange
+        val numberOfTopics = 5
+        val numberOfEventsPerTopic = 3
+        val topics = (1..numberOfTopics).map { newRandomTopic() }
+
+        val brokerInstance1 = getRandomBrokerInstance()
+
+        // Publica vários eventos em múltiplos tópicos
+        topics.forEach { topic ->
+            repeat(numberOfEventsPerTopic) { index ->
+                val message = "Message $index for $topic"
+                brokerInstance1.publish(topic, message, isLastMessage = (index == numberOfEventsPerTopic - 1))
+            }
+        }
+
+        // Aguarde um pouco para garantir que os eventos foram processados e sincronizados
+        Thread.sleep(2000)
+
+        // Act
+        val brokerInstance2 = getRandomBrokerInstance()
+        val retrievedEvents = topics.associateWith { brokerInstance2.getLastEvent(it) }
+
+        // Assert
+        assertTrue(retrievedEvents.all { it.value != null }, "Not all topics have their last events retrieved.")
+        assertTrue(
+            retrievedEvents.all { (_, event) -> event!!.isLast },
+            "Not all retrieved events are the last events for their topics."
+        )
+
+        // Additional check to ensure the content of the messages is correct
+        topics.forEachIndexed { index, topic ->
+            val expectedMessage = "Message ${numberOfEventsPerTopic - 1} for $topic"
+            assertEquals(
+                expectedMessage,
+                retrievedEvents[topic]?.message,
+                "Mismatch in message content for topic $topic."
+            )
+        }
+    }
+*/
     @Test
     fun `new subscriber in 1 topic should receive the last message`() {
         // Arrange
@@ -1100,7 +1417,7 @@ class BrokerTests {
 
         private fun createBrokerInstance() =
             // - PostgreSQL
-            Broker()
+        //    Broker()
 
             // - Redis
             // BrokerRedisPubSubJedis()
@@ -1108,6 +1425,7 @@ class BrokerTests {
             // BrokerRedisStreams()
 
             // - RabbitMQ
+            BrokerRabbitQueues()
             // BrokerRabbitStreams()
 
         private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { createBrokerInstance() }

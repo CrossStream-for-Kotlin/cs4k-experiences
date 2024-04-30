@@ -20,7 +20,7 @@ class LatestTopicEvents {
     ) {
 
         constructor(event: Event) :
-            this(event.id, listOf(event.message, event.isLast.toString()).joinToString(";"))
+                this(event.id, listOf(event.message, event.isLast.toString()).joinToString(";"))
 
         fun toEvent(topic: String): Event {
             val splitPayload = payload.split(";")
@@ -105,4 +105,20 @@ class LatestTopicEvents {
      *
      */
     private fun setEvent(topic: String, events: LatestEvents) = map.set(topic, events)
+
+    fun showallEvents(): List<Event?> {
+        lock.withLock {
+            return map.map { (topic, events) ->
+                getLatestEvent(topic)
+            }.filterNotNull()
+        }
+    }
+
+    fun getAllTopicsAndEvents(): List<Pair<String, Event?>> {
+        lock.withLock {
+            return map.map { (topic, events) ->
+                Pair(topic, getLatestEvent(topic))
+            }
+        }
+    }
 }
