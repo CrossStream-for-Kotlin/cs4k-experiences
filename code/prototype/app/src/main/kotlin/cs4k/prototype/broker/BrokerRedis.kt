@@ -960,7 +960,7 @@ class BrokerRedisStreams(private val dbConnectionPoolSize: Int = 10) {
         val coroutines = connection.coroutines()
         var currentStreamMessageId = startStreamMessageId
 
-        while (true) {
+        while (connection.isOpen) {
             coroutines
                 .xread(
                     XReadArgs.Builder.block(BLOCK_READ_TIME),
@@ -1171,11 +1171,8 @@ class BrokerRedisStreams(private val dbConnectionPoolSize: Int = 10) {
          *
          * @return The redis client instance.
          */
-        private fun createRedisClient(): RedisClient {
-            val host = Environment.getRedisHost()
-            val port = Environment.getRedisPort()
-            return RedisClient.create(RedisURI.create(host, port))
-        }
+        private fun createRedisClient() =
+            RedisClient.create(RedisURI.create(getRedisHost(), getRedisPort()))
 
         /**
          * Create a connection poll for database interactions.
