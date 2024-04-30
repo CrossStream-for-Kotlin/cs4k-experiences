@@ -7,7 +7,6 @@ import com.rabbitmq.client.DefaultConsumer
 import com.rabbitmq.client.Envelope
 import cs4k.prototype.broker.BrokerException.BrokerDbLostConnectionException
 import cs4k.prototype.broker.BrokerException.BrokerTurnOffException
-import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -243,7 +242,6 @@ class BrokerRabbitStreams(
                 associatedSubscribers.updateLastEventListened(subscriber.id, topic, event.id)
                 handler(event)
             }
-
         }
         return { unsubscribe(topic, subscriber) }
     }
@@ -348,7 +346,6 @@ class BrokerRabbitStreams(
         val payload = "$message;$isLastMessage"
         retryExecutor.execute({ BrokerDbLostConnectionException() }, {
             val publishingChannel = channelPool.getChannel()
-            publishingChannel.confirmSelect()
             publishingChannel.basicPublish(
                 "",
                 streamName,
@@ -358,7 +355,6 @@ class BrokerRabbitStreams(
                     ).build(),
                 payload.toByteArray()
             )
-            publishingChannel.waitForConfirms()
         }, retryCondition)
     }
 

@@ -19,10 +19,10 @@ class ConsumeChannelStore {
     private class ChannelInfo(val channel: Channel, var isBeingAnalyzed: Boolean = false)
 
     /**
-     * Marks the channel as being used for analysis if it hasn't yet.
+     * Marks the channel as being used for analysis for eventual cleanup.
      * @param topic The topic being consumed.
      * @return true if it wasn't analyzed yet, and it was marked as such by the thread, false if it's already being
-     * analyzed by another.
+     * analyzed by another or if the topic in question is not being consumed.
      */
     fun markForAnalysis(topic: String) = lock.withLock {
         val entry = map[topic]

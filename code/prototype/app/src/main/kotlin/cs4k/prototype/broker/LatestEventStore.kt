@@ -11,7 +11,6 @@ class LatestEventStore {
     // Map that associates topics with their respective recent events.
     private val map = HashMap<String, Event>()
 
-
     // Lock to ensure thread safety.
     private val lock = ReentrantLock()
 
