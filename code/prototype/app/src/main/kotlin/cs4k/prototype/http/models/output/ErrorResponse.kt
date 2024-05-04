@@ -5,7 +5,7 @@ import org.springframework.http.ResponseEntity
 import java.net.URI
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
-class ErrorResponse(
+data class ErrorResponse(
     val type: URI,
     val title: String? = null,
     val detail: String? = null,

@@ -1,6 +1,8 @@
 package cs4k.prototype.broker
 
-import cs4k.prototype.broker.BrokerException.BrokerTurnOffException
+import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
+import cs4k.prototype.broker.common.Event
+import cs4k.prototype.broker.option1.Broker
 import org.junit.jupiter.api.AfterAll
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
@@ -616,7 +618,6 @@ class BrokerTests {
                         topic = pair.first,
                         message = pair.second
                     )
-
                 } catch (e: Exception) {
                     errors.add(e)
                 }
@@ -890,8 +891,9 @@ class BrokerTests {
             unsubscribe()
 
             val currentTimeMillis = System.currentTimeMillis()
-            if (currentTimeMillis - startTimeMillis >= TEST_EXECUTION_TIME_MILLIS && events.size >= messages.size)
+            if (currentTimeMillis - startTimeMillis >= TEST_EXECUTION_TIME_MILLIS && events.size >= messages.size) {
                 break
+            }
         }
 
         publisherThread.interrupt()
@@ -949,8 +951,9 @@ class BrokerTests {
                         unsubscribe()
 
                         val currentTimeMillis = System.currentTimeMillis()
-                        if (currentTimeMillis - startTimeMillis >= TEST_EXECUTION_TIME_MILLIS && events.size >= messages.size)
+                        if (currentTimeMillis - startTimeMillis >= TEST_EXECUTION_TIME_MILLIS && events.size >= messages.size) {
                             break
+                        }
                     }
 
                     // Assert [2]
@@ -1024,8 +1027,9 @@ class BrokerTests {
 
                         unsubscribe()
                         val currentTimeMillis = System.currentTimeMillis()
-                        if (currentTimeMillis - startTimeMillis >= TEST_EXECUTION_TIME_MILLIS && events.size >= entry.value.size)
+                        if (currentTimeMillis - startTimeMillis >= TEST_EXECUTION_TIME_MILLIS && events.size >= entry.value.size) {
                             break
+                        }
                     }
 
                     // Assert [2]
@@ -1102,13 +1106,13 @@ class BrokerTests {
             // - PostgreSQL
             Broker()
 
-            // - Redis
-            // BrokerRedisPubSubJedis()
-            // BrokerRedisPubSubLettuce()
-            // BrokerRedisStreams()
+        // - Redis
+        // BrokerRedisPubSubJedis()
+        // BrokerRedisPubSubLettuce()
+        // BrokerRedisStreams()
 
-            // - RabbitMQ
-            // BrokerRabbitStreams()
+        // - RabbitMQ
+        // BrokerRabbitStreams()
 
         private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { createBrokerInstance() }
 

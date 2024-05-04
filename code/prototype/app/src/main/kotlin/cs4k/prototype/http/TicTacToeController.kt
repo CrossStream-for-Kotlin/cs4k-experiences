@@ -16,9 +16,8 @@ class TicTacToeController(
 ) {
 
     @PostMapping(Uris.TicTacToe.START)
-    fun start(@RequestBody startInputModel: StartInputModel): SseEmitter {
-        return ticTacToeService.start(startInputModel.player)
-    }
+    fun start(@RequestBody startInputModel: StartInputModel): SseEmitter =
+        ticTacToeService.start(startInputModel.player)
 
     @PostMapping(Uris.TicTacToe.PLAY)
     fun play(@RequestBody playInputModel: PlayInputModel, @PathVariable id: Int) {
@@ -26,7 +25,6 @@ class TicTacToeController(
     }
 
     @GetMapping(Uris.TicTacToe.WATCH)
-    fun watch(@PathVariable id: Int): SseEmitter {
-        return ticTacToeService.watch(id)
-    }
+    fun watch(@PathVariable id: Int): SseEmitter =
+        ticTacToeService.watch(id)
 }

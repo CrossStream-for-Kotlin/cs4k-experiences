@@ -1,4 +1,4 @@
-package cs4k.prototype.broker
+package cs4k.prototype.broker.option1
 
 /**
  * Represents operations commands on a channel.

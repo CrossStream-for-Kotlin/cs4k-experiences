@@ -1,4 +1,4 @@
-package cs4k.prototype.broker
+package cs4k.prototype.broker.common
 
 /**
  * Represents an event that can be published to a topic.

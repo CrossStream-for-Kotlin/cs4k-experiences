@@ -1,5 +1,6 @@
-package cs4k.prototype.broker
+package cs4k.prototype.broker.option2.rabbitmq
 
+import cs4k.prototype.broker.common.Event
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlin.math.max

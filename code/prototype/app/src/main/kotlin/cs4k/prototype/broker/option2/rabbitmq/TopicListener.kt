@@ -1,4 +1,4 @@
-package cs4k.prototype.broker
+package cs4k.prototype.broker.option2.rabbitmq
 
 import kotlinx.coroutines.Job
 

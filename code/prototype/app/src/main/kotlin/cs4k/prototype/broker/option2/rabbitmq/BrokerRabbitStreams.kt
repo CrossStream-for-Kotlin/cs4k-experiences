@@ -1,18 +1,23 @@
-package cs4k.prototype.broker
+package cs4k.prototype.broker.option2.rabbitmq
 
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.Channel
 import com.rabbitmq.client.ConnectionFactory
 import com.rabbitmq.client.DefaultConsumer
 import com.rabbitmq.client.Envelope
-import cs4k.prototype.broker.BrokerException.BrokerDbLostConnectionException
-import cs4k.prototype.broker.BrokerException.BrokerTurnOffException
+import cs4k.prototype.broker.common.AssociatedSubscribers
+import cs4k.prototype.broker.common.BrokerException.BrokerLostConnectionException
+import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
+import cs4k.prototype.broker.common.Event
+import cs4k.prototype.broker.common.RetryExecutor
+import cs4k.prototype.broker.common.Subscriber
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import org.slf4j.LoggerFactory
 import java.io.IOException
-import java.util.*
+import java.util.Collections
+import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -98,7 +103,7 @@ class BrokerRabbitStreams(
             associatedSubscribers
                 .getAll(topic)
                 .forEach { subscriber ->
-                    if (subscriber.lastEventNotified < eventToNotify.id) {
+                    if (subscriber.lastEventId < eventToNotify.id) {
                         associatedSubscribers.updateLastEventListened(subscriber.id, topic, eventToNotify.id)
                         subscriber.handler(eventToNotify)
                     }
@@ -180,7 +185,7 @@ class BrokerRabbitStreams(
      * Creates a common stream to receive events.
      */
     private fun createStream() {
-        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
+        retryExecutor.execute({ BrokerLostConnectionException() }, {
             val consumingChannel = channelPool.getChannel()
             consumingChannel.queueDeclare(
                 streamName,
@@ -200,7 +205,7 @@ class BrokerRabbitStreams(
      * Creates a queue used to share offsets, binding it to the exchange used to send requests to.
      */
     private fun enableOffsetSharing() {
-        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
+        retryExecutor.execute({ BrokerLostConnectionException() }, {
             val channel = channelPool.getChannel()
             channel.queueDeclare(
                 brokerId,
@@ -233,7 +238,7 @@ class BrokerRabbitStreams(
      * @param handler The handler to be called when there is a new event.
      * @return The callback to be called when unsubscribing.
      * @throws BrokerTurnOffException If the broker is turned off.
-     * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
+     * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
         if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
@@ -241,7 +246,7 @@ class BrokerRabbitStreams(
         associatedSubscribers.addToKey(topic, subscriber) { listen(topic) }
         logger.info("new subscriber topic '{}' id '{}", topic, subscriber.id)
         getLastEvent(topic)?.let { event ->
-            if (subscriber.lastEventNotified < event.id) {
+            if (subscriber.lastEventId < event.id) {
                 associatedSubscribers.updateLastEventListened(subscriber.id, topic, event.id)
                 handler(event)
             }
@@ -279,7 +284,7 @@ class BrokerRabbitStreams(
      * @param message The message to send.
      * @param isLastMessage Indicates if the message is the last one.
      * @throws BrokerTurnOffException If the broker is turned off.
-     * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
+     * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
         if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
@@ -292,7 +297,7 @@ class BrokerRabbitStreams(
     private fun listen(topic: String) {
         if (consumeChannelStore[topic] != null) return
         val offset = latestOffsetFetcher.getOffset(topic, subscribeDelay)
-        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
+        retryExecutor.execute({ BrokerLostConnectionException() }, {
             val consumingChannel = channelPool.getChannel()
             consumeChannelStore[topic] = consumingChannel
             consumingChannel.basicQos(100)
@@ -332,7 +337,7 @@ class BrokerRabbitStreams(
      * UnListen for notifications.
      */
     private fun unListenNow(channel: Channel) {
-        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
+        retryExecutor.execute({ BrokerLostConnectionException() }, {
             channelPool.stopUsingChannel(channel)
         }, retryCondition)
     }
@@ -343,11 +348,11 @@ class BrokerRabbitStreams(
      * @param topic The topic name.
      * @param message The message to send.
      * @param isLastMessage Indicates if the message is the last one.
-     * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
+     * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     private fun notify(topic: String, message: String, isLastMessage: Boolean) {
         val payload = "$message;$isLastMessage"
-        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
+        retryExecutor.execute({ BrokerLostConnectionException() }, {
             val publishingChannel = channelPool.getChannel()
             publishingChannel.basicPublish(
                 "",
@@ -365,7 +370,7 @@ class BrokerRabbitStreams(
      * Shutdown the broker.
      *
      * @throws BrokerTurnOffException If the broker is turned off.
-     * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
+     * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     fun shutdown() {
         if (isShutdown.compareAndSet(false, true)) {

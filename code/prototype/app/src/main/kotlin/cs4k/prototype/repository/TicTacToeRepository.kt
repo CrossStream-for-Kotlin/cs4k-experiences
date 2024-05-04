@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import cs4k.prototype.domain.Game
 import cs4k.prototype.domain.GameError
-import cs4k.prototype.domain.GameInfo
 import org.postgresql.util.PGobject
 import org.springframework.stereotype.Component
 import java.sql.Connection
@@ -12,7 +11,7 @@ import java.sql.DriverManager
 import java.sql.Statement
 
 @Component
-class TicTacToeRepository() {
+class TicTacToeRepository {
 
     init {
         createTables()
@@ -31,7 +30,7 @@ class TicTacToeRepository() {
         }
     }
 
-    class WaitingRegistry(
+    data class WaitingRegistry(
         val player: String,
         val gameId: Int
     )
@@ -171,7 +170,5 @@ class TicTacToeRepository() {
         private val objectMapper = ObjectMapper().registerModules(KotlinModule.Builder().build())
         private fun gameObjectToJson(game: Game): String = objectMapper.writeValueAsString(game)
         private fun gameJsonToObject(json: String): Game = objectMapper.readValue(json, Game::class.java)
-
-        private fun gameInfoObjectToJson(gameInfo: GameInfo) = objectMapper.writeValueAsString(gameInfo)
     }
 }

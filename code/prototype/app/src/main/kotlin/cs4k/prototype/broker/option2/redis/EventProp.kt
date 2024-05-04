@@ -1,4 +1,6 @@
-package cs4k.prototype.broker
+package cs4k.prototype.broker.option2.redis
+
+import cs4k.prototype.broker.common.Event
 
 /**
  * Represents the [Event] properties.
