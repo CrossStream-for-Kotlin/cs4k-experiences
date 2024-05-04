@@ -58,6 +58,7 @@ class BrokerRabbitStreams(
 
     /**
      * Requesting an offset from surrounding brokers to consume from common stream.
+     * @param offset The topic that consumer wants to consume.
      */
     private fun fetchOffset(topic: String): Long {
         val channel = channelPool.getChannel()
@@ -88,6 +89,8 @@ class BrokerRabbitStreams(
 
     /**
      * Consumer used to process messages from stream.
+     * @param topic The topic that the consumer wants to consume.
+     * @param channel The channel where messages are sent to.
      */
     private inner class BrokerConsumer(val topic: String, channel: Channel) : DefaultConsumer(channel) {
 
@@ -134,6 +137,7 @@ class BrokerRabbitStreams(
 
     /**
      * Consumer used to receive requests for offsets and sends them out as responses.
+     * @param channel Channel where requests come from.
      */
     private inner class OffsetShareHandler(channel: Channel) : DefaultConsumer(channel) {
         override fun handleDelivery(
@@ -164,6 +168,9 @@ class BrokerRabbitStreams(
 
     /**
      * Consumer responsible for handling responses to offset requests.
+     * @param continuation Continuation that, when resumed, exectues the remainder of the fetchOffset
+     * code with offset received.
+     * @param channel Channel where response is received from.
      */
     private inner class OffsetReceiverHandler(val continuation: Continuation<Long?>, channel: Channel) :
         DefaultConsumer(channel) {
@@ -315,6 +322,10 @@ class BrokerRabbitStreams(
         }, retryCondition)
     }
 
+    /**
+     * Obtaining the latest event from topic.
+     * @param topic The topic of the event.
+     */
     private fun getLastEvent(topic: String): Event? {
         val event = latestEventStore.getLatestEvent(topic)
         logger.info("last event received -> {}", event)
@@ -323,23 +334,18 @@ class BrokerRabbitStreams(
 
     /**
      * Gracefully letting go of resources related to the topic.
+     * @param topic The topic formerly consumed.
+     * @param channel The channel that consumption was being done from.
      */
     private fun unListen(topic: String, channel: Channel) {
         if (associatedSubscribers.noSubscribers(topic)) {
             consumeChannelStore[topic] = null
             latestOffsetFetcher.removeOffset(topic)
             latestEventStore.removeLatestEvent(topic)
-            unListenNow(channel)
+            retryExecutor.execute({ BrokerLostConnectionException() }, {
+                channelPool.stopUsingChannel(channel)
+            }, retryCondition)
         }
-    }
-
-    /**
-     * UnListen for notifications.
-     */
-    private fun unListenNow(channel: Channel) {
-        retryExecutor.execute({ BrokerLostConnectionException() }, {
-            channelPool.stopUsingChannel(channel)
-        }, retryCondition)
     }
 
     /**
@@ -386,8 +392,13 @@ class BrokerRabbitStreams(
         // Logger instance for logging Broker class information.
         private val logger = LoggerFactory.getLogger(BrokerRabbitStreams::class.java)
 
-        private fun createFactory(): ConnectionFactory =
-            ConnectionFactory()
+        /**
+         * Creates the creator of connections for accessing RabbitMQ broker.
+         */
+        private fun createFactory(): ConnectionFactory {
+            val factory = ConnectionFactory()
+            return factory
+        }
 
         // Connection factory used to make connections to message broker.
         private val connectionFactory = createFactory()

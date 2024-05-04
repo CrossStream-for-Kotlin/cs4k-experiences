@@ -15,7 +15,11 @@ class ConsumeChannelStore {
     // Lock to ensure thread safety.
     private val lock = ReentrantLock()
 
-    // Class that represents the information of a channel, namely if they're being analyzed for eventual closure.
+    /**
+     * Represents information regarding a channel.
+     * @property channel Channel in question.
+     * @property isBeingAnalyzed If the channel is being checked for potential cleanup.
+     */
     private class ChannelInfo(val channel: Channel, var isBeingAnalyzed: Boolean = false)
 
     /**
@@ -42,15 +46,25 @@ class ConsumeChannelStore {
         map[topic]?.isBeingAnalyzed = false
     }
 
+    /**
+     * Obtain a channel associated with topic.
+     * @param topic The topic being consumed.
+     * @return The channel where consumption is being done.
+     */
     operator fun get(topic: String) = lock.withLock {
         map[topic]?.channel
     }
 
-    operator fun set(topic: String, consumer: Channel?) = lock.withLock {
-        if (consumer == null) {
+    /**
+     * Associate a topic to a channel or, if channel is null, remove the entry.
+     * @param topic The topic being, or formerly was, consumed.
+     * @param channel The channel where consumption is being done, or null to signal removal.
+     */
+    operator fun set(topic: String, channel: Channel?) = lock.withLock {
+        if (channel == null) {
             map.remove(topic)
         } else {
-            map[topic] = ChannelInfo(consumer)
+            map[topic] = ChannelInfo(channel)
         }
     }
 }
