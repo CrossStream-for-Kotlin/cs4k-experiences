@@ -1,6 +1,5 @@
 package cs4k.prototype.broker.option2.redis
 
-import cs4k.prototype.broker.option2.rabbitmq.TopicListener
 import kotlinx.coroutines.Job
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock

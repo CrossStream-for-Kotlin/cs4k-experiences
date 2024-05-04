@@ -26,6 +26,7 @@ import java.util.UUID
 //      - Redis Pub/Sub using Redis as an in-memory data structure (key-value (hash) pair)
 //      - Lettuce client
 
+// @Component
 class BrokerRedisPubSubLettuce(private val dbConnectionPoolSize: Int = 10) {
 
     init {

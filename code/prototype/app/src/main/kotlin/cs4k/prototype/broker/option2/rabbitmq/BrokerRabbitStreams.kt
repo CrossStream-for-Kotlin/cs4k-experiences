@@ -386,10 +386,8 @@ class BrokerRabbitStreams(
         // Logger instance for logging Broker class information.
         private val logger = LoggerFactory.getLogger(BrokerRabbitStreams::class.java)
 
-        private fun createFactory(): ConnectionFactory {
-            val factory = ConnectionFactory()
-            return factory
-        }
+        private fun createFactory(): ConnectionFactory =
+            ConnectionFactory()
 
         // Connection factory used to make connections to message broker.
         private val connectionFactory = createFactory()

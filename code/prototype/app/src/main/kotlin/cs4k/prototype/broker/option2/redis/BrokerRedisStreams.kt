@@ -35,6 +35,7 @@ import kotlin.concurrent.thread
 //      - Redis Streams (n streams - n topics)
 //      - Lettuce client
 
+// @Component
 class BrokerRedisStreams(private val dbConnectionPoolSize: Int = 10) {
 
     init {

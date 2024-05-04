@@ -26,6 +26,7 @@ import kotlin.concurrent.thread
 //      - Redis Pub/Sub using Redis as an in-memory data structure (key-value (hash) pair)
 //      - Jedis client
 
+// @Component
 class BrokerRedisPubSubJedis(private val dbConnectionPoolSize: Int = 10) {
 
     init {
