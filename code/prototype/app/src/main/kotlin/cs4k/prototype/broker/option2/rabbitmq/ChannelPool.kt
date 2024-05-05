@@ -1,4 +1,4 @@
-package cs4k.prototype.broker
+package cs4k.prototype.broker.option2.rabbitmq
 
 import com.rabbitmq.client.Channel
 import com.rabbitmq.client.Connection
@@ -18,6 +18,8 @@ import kotlin.time.Duration
 /**
  * Manager of connections created from a single connection.
  * Instead of closing channels, they're reused when a user stops using it.
+ * @param connection The connection from which channels are created from.
+ * @param maxChannels The maximum amount of channels that can be created at once.
  */
 class ChannelPool(
     private val connection: Connection,
@@ -32,7 +34,13 @@ class ChannelPool(
     // Lock to turn access to the pool thread-safe.
     private val lock = ReentrantLock()
 
-    // Class detailing information about the channel.
+    /**
+     * Information related to the channel.
+     * @property channel The channel.
+     * @property isBeingUsed If the channel is being used.
+     * @property consumerTag The consumerTag linked with a consume done in this channel. If null, then the channel
+     * isn't being used for consuming.
+     */
     private class ChannelEntry(
         val channel: Channel,
         var isBeingUsed: Boolean = true,
@@ -46,7 +54,11 @@ class ChannelPool(
     // Collection of created channels.
     private val channels: MutableList<ChannelEntry> = mutableListOf()
 
-    // Structure of a request sent by those who ask for a channel.
+    /**
+     * Request for a new channel.
+     * @property continuation Remainder of the code that is resumed when channel is obtained.
+     * @property channel The channel that the requester will receive.
+     */
     private class ChannelRequest(
         val continuation: Continuation<Unit>,
         var channel: Channel? = null
@@ -58,6 +70,7 @@ class ChannelPool(
     /**
      * Obtain a new channel. If no channels are available and max capacity is reached, it will passively wait for a new
      * connection given by another thread.
+     * @return An unused channel, if timeout isn't reached.
      */
     private suspend fun getChannel(): Channel {
         var myRequest: ChannelRequest? = null
@@ -100,6 +113,8 @@ class ChannelPool(
     /**
      * Obtain a new channel. If no channels are available and max capacity is reached, it will passively wait for a new
      * connection given by another thread or until timeout is reached.
+     * @param timeout Maximum amount of time waiting to fetch a new channel.
+     * @return An unused channel, if timeout isn't reached.
      */
     fun getChannel(timeout: Duration = Duration.INFINITE): Channel {
         if (isClosed) throw IOException("Pool already closed - cannot obtain new channels")
@@ -122,6 +137,8 @@ class ChannelPool(
 
     /**
      * Marks the channel as being used for consumption of a queue or stream.
+     * @param channel Channel obtained from channel pool.
+     * @param consumerTag Newly created consumerTag created on basicConsume.
      */
     fun registerConsuming(channel: Channel, consumerTag: String) {
         if (isClosed) throw IOException("Pool already closed - cannot obtain new channels")
@@ -137,6 +154,7 @@ class ChannelPool(
     /**
      * Makes the channel free for the taking, making sure to cancel consumption if it was used for that.
      * If there was someone wanting a channel, it is handed to them instead.
+     * @param channel The channel that the user doesn't want to use.
      */
     fun stopUsingChannel(channel: Channel) {
         if (isClosed) return
@@ -159,6 +177,9 @@ class ChannelPool(
         }
     }
 
+    /**
+     * Closes every channel and releases every waiting requester.
+     */
     override fun close() = lock.withLock {
         if (!isClosed) {
             isClosed = true

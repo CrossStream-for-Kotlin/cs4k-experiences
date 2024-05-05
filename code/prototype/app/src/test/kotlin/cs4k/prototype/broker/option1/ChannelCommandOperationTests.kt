@@ -1,4 +1,4 @@
-package cs4k.prototype.broker
+package cs4k.prototype.broker.option1
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

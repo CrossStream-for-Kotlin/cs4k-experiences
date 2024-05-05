@@ -40,7 +40,6 @@ dependencies {
     implementation("com.rabbitmq:stream-client:0.15.0")
     implementation("com.rabbitmq:amqp-client:5.21.0")
 
-
     // For Redis
     implementation("redis.clients:jedis:5.1.0")
     implementation("io.lettuce:lettuce-core:6.3.2.RELEASE")
@@ -107,25 +106,20 @@ task<Exec>("rabbitUp") {
     commandLine("docker-compose", "up", "-d", "--build", "rabbit-mq")
 }
 
-
 tasks.register<Exec>("rabbitUpCluster") {
-    // Define a lista de serviços para subir
     val services = listOf("rabbit-mq1", "rabbit-mq2", "rabbit-mq3")
 
     services.forEach { service ->
         commandLine("docker-compose", "up", "-d", "--build", service)
-        // Necessário para forçar a execução de cada comando separadamente
         isIgnoreExitValue = true
     }
 }
 
 tasks.register<Exec>("rabbitUp2") {
-    // Define a lista de serviços para subir
     val services = listOf("rabbit-mq1", "rabbit-mq2")
 
     services.forEach { service ->
         commandLine("docker-compose", "up", "-d", "--build", service)
-        // Necessário para forçar a execução de cada comando separadamente
         isIgnoreExitValue = true
     }
 }

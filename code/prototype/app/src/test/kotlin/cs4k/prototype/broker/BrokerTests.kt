@@ -1,6 +1,8 @@
 package cs4k.prototype.broker
 
-import cs4k.prototype.broker.BrokerException.BrokerTurnOffException
+import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
+import cs4k.prototype.broker.common.Event
+import cs4k.prototype.broker.option1.Broker
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.RepeatedTest
 import java.util.concurrent.ConcurrentHashMap
@@ -23,6 +25,7 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 class BrokerTests {
+
     /*
     @Test
     fun `cannot create a broker with a negative database connection pool size`() {
@@ -1207,8 +1210,9 @@ class BrokerTests {
             unsubscribe()
 
             val currentTimeMillis = System.currentTimeMillis()
-            if (currentTimeMillis - startTimeMillis >= TEST_EXECUTION_TIME_MILLIS && events.size >= messages.size)
+            if (currentTimeMillis - startTimeMillis >= TEST_EXECUTION_TIME_MILLIS && events.size >= messages.size) {
                 break
+            }
         }
 
         publisherThread.interrupt()
@@ -1266,8 +1270,9 @@ class BrokerTests {
                         unsubscribe()
 
                         val currentTimeMillis = System.currentTimeMillis()
-                        if (currentTimeMillis - startTimeMillis >= TEST_EXECUTION_TIME_MILLIS && events.size >= messages.size)
+                        if (currentTimeMillis - startTimeMillis >= TEST_EXECUTION_TIME_MILLIS && events.size >= messages.size) {
                             break
+                        }
                     }
 
                     // Assert [2]
@@ -1341,8 +1346,9 @@ class BrokerTests {
 
                         unsubscribe()
                         val currentTimeMillis = System.currentTimeMillis()
-                        if (currentTimeMillis - startTimeMillis >= TEST_EXECUTION_TIME_MILLIS && events.size >= entry.value.size)
+                        if (currentTimeMillis - startTimeMillis >= TEST_EXECUTION_TIME_MILLIS && events.size >= entry.value.size) {
                             break
+                        }
                     }
 
                     // Assert [2]
@@ -1419,10 +1425,10 @@ class BrokerTests {
             // - PostgreSQL
         //    Broker()
 
-            // - Redis
-            // BrokerRedisPubSubJedis()
-            // BrokerRedisPubSubLettuce()
-            // BrokerRedisStreams()
+        // - Redis
+        // BrokerRedisPubSubJedis()
+        // BrokerRedisPubSubLettuce()
+        // BrokerRedisStreams()
 
             // - RabbitMQ
             BrokerRabbitQueues()

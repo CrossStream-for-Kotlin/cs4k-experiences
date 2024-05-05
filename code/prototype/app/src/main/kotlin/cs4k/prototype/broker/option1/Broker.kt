@@ -1,16 +1,21 @@
-package cs4k.prototype.broker
+package cs4k.prototype.broker.option1
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
-import cs4k.prototype.broker.BrokerException.BrokerDbConnectionException
-import cs4k.prototype.broker.BrokerException.BrokerDbLostConnectionException
-import cs4k.prototype.broker.BrokerException.BrokerTurnOffException
-import cs4k.prototype.broker.BrokerException.DbConnectionPoolSizeException
-import cs4k.prototype.broker.BrokerException.UnexpectedBrokerException
-import cs4k.prototype.broker.ChannelCommandOperation.Listen
-import cs4k.prototype.broker.ChannelCommandOperation.UnListen
+import cs4k.prototype.broker.common.AssociatedSubscribers
+import cs4k.prototype.broker.common.BrokerException.BrokerConnectionException
+import cs4k.prototype.broker.common.BrokerException.BrokerLostConnectionException
+import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
+import cs4k.prototype.broker.common.BrokerException.ConnectionPoolSizeException
+import cs4k.prototype.broker.common.BrokerException.UnexpectedBrokerException
+import cs4k.prototype.broker.common.Environment
+import cs4k.prototype.broker.common.Event
+import cs4k.prototype.broker.common.RetryExecutor
+import cs4k.prototype.broker.common.Subscriber
+import cs4k.prototype.broker.option1.ChannelCommandOperation.Listen
+import cs4k.prototype.broker.option1.ChannelCommandOperation.UnListen
 import org.postgresql.PGConnection
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -39,7 +44,7 @@ class Broker(
     private val retryExecutor = RetryExecutor()
 
     // Connection pool.
-    private val connectionPool = retryExecutor.execute({ BrokerDbConnectionException() }, {
+    private val connectionPool = retryExecutor.execute({ BrokerConnectionException() }, {
         createConnectionPool(dbConnectionPoolSize)
     })
 
@@ -70,7 +75,7 @@ class Broker(
      * @param handler The handler to be called when there is a new event.
      * @return The method to be called when unsubscribing.
      * @throws BrokerTurnOffException If the broker is turned off.
-     * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
+     * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
         if (isShutdown || connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
@@ -91,7 +96,7 @@ class Broker(
      * @param message The message to send.
      * @param isLastMessage Indicates if the message is the last one.
      * @throws BrokerTurnOffException If the broker is turned off.
-     * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
+     * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
         if (isShutdown || connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::publish.name}.")
@@ -103,7 +108,7 @@ class Broker(
      * Shutdown the broker.
      *
      * @throws BrokerTurnOffException If the broker is turned off.
-     * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
+     * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     fun shutdown() {
         if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
@@ -119,7 +124,7 @@ class Broker(
      * @param subscriber The subscriber who unsubscribed.
      */
     private fun unsubscribe(topic: String, subscriber: Subscriber) {
-        associatedSubscribers.removeIf(topic) { sub -> sub.id == subscriber.id }
+        associatedSubscribers.removeIf(topic, { sub -> sub.id == subscriber.id })
         logger.info("unsubscribe topic '{}' id '{}", topic, subscriber.id)
     }
 
@@ -127,11 +132,11 @@ class Broker(
      * Wait for notifications.
      * If a new notification arrives, create an event and call the handler of the associated subscribers.
      *
-     * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
+     * @throws BrokerLostConnectionException If the broker lost connection to the database.
      * @throws UnexpectedBrokerException If something unexpected happens.
      */
     private fun waitForNotification() {
-        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
+        retryExecutor.execute({ BrokerLostConnectionException() }, {
             connectionPool.connection.use { conn ->
                 val pgConnection = conn.unwrap(PGConnection::class.java)
 
@@ -140,7 +145,11 @@ class Broker(
                         ?: throw UnexpectedBrokerException()
                     newNotifications.forEach { notification ->
                         if (notification.name == channel) {
-                            logger.info("new notification '{}' backendPid '{}' ", notification.parameter, pgConnection.backendPID)
+                            logger.info(
+                                "new notification '{}' backendPid '{}' ",
+                                notification.parameter,
+                                pgConnection.backendPID
+                            )
                             val event = deserialize(notification.parameter)
                             associatedSubscribers
                                 .getAll(event.topic)
@@ -165,10 +174,10 @@ class Broker(
     /**
      * Execute the ChannelCommandOperation.
      *
-     * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
+     * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     private fun ChannelCommandOperation.execute() {
-        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
+        retryExecutor.execute({ BrokerLostConnectionException() }, {
             connectionPool.connection.use { conn ->
                 conn.createStatement().use { stm ->
                     stm.execute("$this $channel;")
@@ -184,10 +193,10 @@ class Broker(
      * @param topic The topic name.
      * @param message The message to send.
      * @param isLastMessage Indicates if the message is the last one.
-     * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
+     * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     private fun notify(topic: String, message: String, isLastMessage: Boolean) {
-        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
+        retryExecutor.execute({ BrokerLostConnectionException() }, {
             connectionPool.connection.use { conn ->
                 try {
                     conn.autoCommit = false
@@ -252,10 +261,10 @@ class Broker(
      *
      * @param topic The topic name.
      * @return The last event of the topic, or null if the topic does not exist yet.
-     * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
+     * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     private fun getLastEvent(topic: String): Event? =
-        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
+        retryExecutor.execute({ BrokerLostConnectionException() }, {
             connectionPool.connection.use { conn ->
                 conn.prepareStatement("select id, message, is_last from events where topic = ?;").use { stm ->
                     stm.setString(1, topic)
@@ -277,10 +286,10 @@ class Broker(
     /**
      * Create the events table if it does not exist.
      *
-     * @throws BrokerDbLostConnectionException If the broker lost connection to the database.
+     * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     private fun createEventsTable() {
-        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
+        retryExecutor.execute({ BrokerLostConnectionException() }, {
             connectionPool.connection.use { conn ->
                 conn.createStatement().use { stm ->
                     stm.execute(
@@ -312,11 +321,11 @@ class Broker(
          * Check if the provided database connection pool size is within the acceptable range.
          *
          * @param dbConnectionPoolSize The size of the database connection pool to check.
-         * @throws DbConnectionPoolSizeException If the size is outside the acceptable range.
+         * @throws ConnectionPoolSizeException If the size is outside the acceptable range.
          */
         private fun checkDbConnectionPoolSize(dbConnectionPoolSize: Int) {
             if (dbConnectionPoolSize !in MIN_DB_CONNECTION_POOL_SIZE..MAX_DB_CONNECTION_POOL_SIZE) {
-                throw DbConnectionPoolSizeException(
+                throw ConnectionPoolSizeException(
                     "The connection pool size must be between $MIN_DB_CONNECTION_POOL_SIZE and $MAX_DB_CONNECTION_POOL_SIZE."
                 )
             }
@@ -331,7 +340,7 @@ class Broker(
          */
         private fun createConnectionPool(dbConnectionPoolSize: Int = 10): HikariDataSource {
             val hikariConfig = HikariConfig()
-            hikariConfig.jdbcUrl = Environment.getDbUrl()
+            hikariConfig.jdbcUrl = Environment.getPostgreSQLDbUrl()
             hikariConfig.maximumPoolSize = dbConnectionPoolSize
             return HikariDataSource(hikariConfig)
         }

@@ -1,4 +1,4 @@
-package cs4k.prototype.broker
+package cs4k.prototype.broker.option2.redis
 
 import kotlinx.coroutines.Job
 import java.util.concurrent.locks.ReentrantLock

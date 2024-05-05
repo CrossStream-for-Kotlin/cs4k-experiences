@@ -1,8 +1,8 @@
-package cs4k.prototype.broker
+package cs4k.prototype.broker.common
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
-import java.util.*
+import java.util.UUID
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.abs
 import kotlin.random.Random
@@ -15,7 +15,7 @@ class AssociatedSubscribersTests {
         // Act
         val topic = newTopic()
         val subscriberId = UUID.randomUUID()
-        val subscriber = Subscriber(subscriberId) { _ -> }
+        val subscriber = Subscriber(subscriberId, { _ -> })
 
         // Arrange
         associatedSubscribers.addToKey(topic, subscriber)
@@ -31,11 +31,11 @@ class AssociatedSubscribersTests {
         // Act
         val topic = newTopic()
         val subscriberId = UUID.randomUUID()
-        val subscriber = Subscriber(subscriberId) { _ -> }
+        val subscriber = Subscriber(subscriberId, { _ -> })
 
         // Arrange
         associatedSubscribers.addToKey(topic, subscriber)
-        associatedSubscribers.removeIf(topic) { it.id == subscriberId }
+        associatedSubscribers.removeIf(topic, { it.id == subscriberId })
         val subscribers = associatedSubscribers.getAll(topic)
 
         // Assert
@@ -48,13 +48,13 @@ class AssociatedSubscribersTests {
         val topic = newTopic()
         val subscriberId1 = UUID.randomUUID()
         val subscriberId2 = UUID.randomUUID()
-        val subscriber1 = Subscriber(subscriberId1) { _ -> }
-        val subscriber2 = Subscriber(subscriberId2) { _ -> }
+        val subscriber1 = Subscriber(subscriberId1, { _ -> })
+        val subscriber2 = Subscriber(subscriberId2, { _ -> })
 
         // Arrange
         associatedSubscribers.addToKey(topic, subscriber1)
         associatedSubscribers.addToKey(topic, subscriber2)
-        associatedSubscribers.removeIf(topic) { it.id == subscriberId1 }
+        associatedSubscribers.removeIf(topic, { it.id == subscriberId1 })
         val subscribers = associatedSubscribers.getAll(topic)
 
         // Assert
@@ -68,13 +68,13 @@ class AssociatedSubscribersTests {
         val topic = newTopic()
         val subscriberId1 = UUID.randomUUID()
         val subscriberId2 = UUID.randomUUID()
-        val subscriber1 = Subscriber(subscriberId1) { _ -> }
-        val subscriber2 = Subscriber(subscriberId2) { _ -> }
+        val subscriber1 = Subscriber(subscriberId1, { _ -> })
+        val subscriber2 = Subscriber(subscriberId2, { _ -> })
 
         // Arrange
         associatedSubscribers.addToKey(topic, subscriber1)
         associatedSubscribers.addToKey(topic, subscriber2)
-        associatedSubscribers.removeIf(topic) { it.id == subscriberId2 }
+        associatedSubscribers.removeIf(topic, { it.id == subscriberId2 })
         val subscribers = associatedSubscribers.getAll(topic)
 
         // Assert
@@ -88,13 +88,13 @@ class AssociatedSubscribersTests {
         val topic = newTopic()
         val subscriberId1 = UUID.randomUUID()
         val subscriberId2 = UUID.randomUUID()
-        val subscriber1 = Subscriber(subscriberId1) { _ -> }
-        val subscriber2 = Subscriber(subscriberId2) { _ -> }
+        val subscriber1 = Subscriber(subscriberId1, { _ -> })
+        val subscriber2 = Subscriber(subscriberId2, { _ -> })
 
         // Arrange
         associatedSubscribers.addToKey(topic, subscriber1)
         associatedSubscribers.addToKey(topic, subscriber2)
-        associatedSubscribers.removeIf(topic) { it.id == subscriberId1 }
+        associatedSubscribers.removeIf(topic, { it.id == subscriberId1 })
         val subscribers = associatedSubscribers.getAll(topic)
 
         // Assert
@@ -108,17 +108,17 @@ class AssociatedSubscribersTests {
         val topic = newTopic()
         val subscriberId1 = UUID.randomUUID()
         val subscriberId2 = UUID.randomUUID()
-        val subscriber1 = Subscriber(subscriberId1) { _ -> }
-        val subscriber2 = Subscriber(subscriberId2) { _ -> }
+        val subscriber1 = Subscriber(subscriberId1, { _ -> })
+        val subscriber2 = Subscriber(subscriberId2, { _ -> })
 
         // Arrange
         associatedSubscribers.addToKey(topic, subscriber1)
         associatedSubscribers.addToKey(topic, subscriber2)
         val thread1 = Thread {
-            associatedSubscribers.removeIf(topic) { it.id == subscriberId1 }
+            associatedSubscribers.removeIf(topic, { it.id == subscriberId1 })
         }
         val thread2 = Thread {
-            associatedSubscribers.removeIf(topic) { it.id == subscriberId2 }
+            associatedSubscribers.removeIf(topic, { it.id == subscriberId2 })
         }
         thread1.start()
         thread2.start()
@@ -135,16 +135,16 @@ class AssociatedSubscribersTests {
         val topic = newTopic()
         val subscriberId1 = UUID.randomUUID()
         val subscriberId2 = UUID.randomUUID()
-        val subscriber1 = Subscriber(subscriberId1) { _ -> }
-        val subscriber2 = Subscriber(subscriberId2) { _ -> }
+        val subscriber1 = Subscriber(subscriberId1, { _ -> })
+        val subscriber2 = Subscriber(subscriberId2, { _ -> })
         associatedSubscribers.addToKey(topic, subscriber1)
         associatedSubscribers.addToKey(topic, subscriber2)
 
         // Act
         repeat(NUMBER_OF_SUBSCRIBERS) {
             val threads = listOf(
-                Thread { associatedSubscribers.removeIf(topic) { it.id == subscriberId1 } },
-                Thread { associatedSubscribers.removeIf(topic) { it.id == subscriberId2 } },
+                Thread { associatedSubscribers.removeIf(topic, { it.id == subscriberId1 }) },
+                Thread { associatedSubscribers.removeIf(topic, { it.id == subscriberId2 }) },
                 Thread { associatedSubscribers.addToKey(topic, subscriber1) },
                 Thread { associatedSubscribers.addToKey(topic, subscriber2) }
             )
@@ -163,8 +163,8 @@ class AssociatedSubscribersTests {
         val topic = newTopic()
         val subscriberId1 = UUID.randomUUID()
         val subscriberId2 = UUID.randomUUID()
-        val subscriber1 = Subscriber(subscriberId1) { _ -> }
-        val subscriber2 = Subscriber(subscriberId2) { _ -> }
+        val subscriber1 = Subscriber(subscriberId1, { _ -> })
+        val subscriber2 = Subscriber(subscriberId2, { _ -> })
         val threads = mutableListOf<Thread>()
 
         // Act
@@ -175,10 +175,10 @@ class AssociatedSubscribersTests {
             threads.add(Thread { associatedSubscribers.addToKey(topic, subscriber2) })
             if (NUMBER_OF_SUBSCRIBERS - 1 > it) {
                 threads.add(
-                    Thread { associatedSubscribers.removeIf(topic) { sub -> sub.id == subscriberId1 } }
+                    Thread { associatedSubscribers.removeIf(topic, { sub -> sub.id == subscriberId1 }) }
                 )
                 threads.add(
-                    Thread { associatedSubscribers.removeIf(topic) { sub -> sub.id == subscriberId2 } }
+                    Thread { associatedSubscribers.removeIf(topic, { sub -> sub.id == subscriberId2 }) }
                 )
             }
         }
@@ -200,7 +200,7 @@ class AssociatedSubscribersTests {
 
         // Act
         repeat(NUMBER_OF_SUBSCRIBERS) {
-            val subscriber = Subscriber(UUID.randomUUID()) { _ -> }
+            val subscriber = Subscriber(UUID.randomUUID(), { _ -> })
             subscribers.add(subscriber)
             val thread = Thread {
                 associatedSubscribers.addToKey(topic, subscriber)
@@ -224,7 +224,7 @@ class AssociatedSubscribersTests {
 
         // Act
         repeat(NUMBER_OF_SUBSCRIBERS) {
-            val subscriber = Subscriber(UUID.randomUUID()) { _ -> }
+            val subscriber = Subscriber(UUID.randomUUID(), { _ -> })
             subscribers.add(subscriber)
             val thread = Thread {
                 associatedSubscribers.addToKey(topic, subscriber)
@@ -235,7 +235,7 @@ class AssociatedSubscribersTests {
         repeat(NUMBER_OF_SUBSCRIBERS / 2) {
             val thread = Thread {
                 val subscriber = subscribers.poll()
-                associatedSubscribers.removeIf(topic) { it.id == subscriber.id }
+                associatedSubscribers.removeIf(topic, { it.id == subscriber.id })
             }
             threads.add(thread)
         }

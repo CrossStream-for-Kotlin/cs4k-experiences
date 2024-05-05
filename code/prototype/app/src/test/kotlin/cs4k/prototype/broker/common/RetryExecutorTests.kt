@@ -1,6 +1,6 @@
-package cs4k.prototype.broker
+package cs4k.prototype.broker.common
 
-import cs4k.prototype.broker.BrokerException.BrokerDbLostConnectionException
+import cs4k.prototype.broker.common.BrokerException.BrokerLostConnectionException
 import cs4k.prototype.utils.SuccessTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -12,7 +12,7 @@ class RetryExecutorTests {
     @Test
     fun `execute should return successfully on first try`() {
         val result = retryExecutor.execute(
-            exception = { BrokerDbLostConnectionException() },
+            exception = { BrokerLostConnectionException() },
             action = { SuccessTest }
         )
         assertEquals(SuccessTest, result)
@@ -22,7 +22,7 @@ class RetryExecutorTests {
     fun `execute should retry and succeed on second try`() {
         var retries = 0
         val result = retryExecutor.execute(
-            exception = { BrokerDbLostConnectionException() },
+            exception = { BrokerLostConnectionException() },
             action = {
                 retries++
                 if (retries == 1) throw SQLException("Fail on first attempt.")
@@ -37,7 +37,7 @@ class RetryExecutorTests {
     fun `execute should retry twice and succeed on third try`() {
         var retries = 0
         val result = retryExecutor.execute(
-            exception = { BrokerDbLostConnectionException() },
+            exception = { BrokerLostConnectionException() },
             action = {
                 retries++
                 if (retries == 1) throw SQLException("Fail on first attempt.")
@@ -52,9 +52,9 @@ class RetryExecutorTests {
     @Test
     fun `execute should throw after max retries`() {
         var retries = 0
-        assertThrows(BrokerDbLostConnectionException::class.java) {
+        assertThrows(BrokerLostConnectionException::class.java) {
             retryExecutor.execute(
-                exception = { BrokerDbLostConnectionException() },
+                exception = { BrokerLostConnectionException() },
                 action = {
                     retries++
                     throw SQLException("Always fails.")
@@ -69,7 +69,7 @@ class RetryExecutorTests {
         var retries = 0
         assertThrows(SQLException::class.java) {
             retryExecutor.execute(
-                exception = { BrokerDbLostConnectionException() },
+                exception = { BrokerLostConnectionException() },
                 action = {
                     retries++
                     throw SQLException("Always fails.")

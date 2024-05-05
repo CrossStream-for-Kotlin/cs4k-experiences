@@ -1,4 +1,4 @@
-package cs4k.prototype.broker
+package cs4k.prototype.broker.option2.rabbitmq
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
@@ -24,6 +24,7 @@ class LatestOffsetFetcher(
 
     /**
      * Fetch an offset from an external source and then stores it.
+     * @param topic The topic being consumed.
      */
     private fun fetchOffset(topic: String) {
         val offset = fetchAction(topic)
@@ -67,6 +68,7 @@ class LatestOffsetFetcher(
     /**
      * Reading the latest offset stored.
      * If there are no available offsets, then it will passively wait until notified.
+     * @param topic The topic about to be consumed.
      */
     private suspend fun getOffset(topic: String): Long {
         var myRequest: OffsetRequest? = null
@@ -103,6 +105,8 @@ class LatestOffsetFetcher(
     /**
      * Reading the latest offset stored.
      * If there are no available offsets, then it will passively wait until notified or until timeout is reached.
+     * @param topic The topic about to be consumed.
+     * @param timeout Maximum amount of wait tine.
      */
     fun getOffset(topic: String, timeout: Duration = Duration.INFINITE): Long {
         return runBlocking {
@@ -120,6 +124,7 @@ class LatestOffsetFetcher(
 
     /**
      * Reading the latest offset stored without waiting.
+     * @param topic The topic being consumed.
      */
     fun getOffsetNoWait(topic: String): Long? = lock.withLock {
         offsets[topic]
@@ -127,6 +132,7 @@ class LatestOffsetFetcher(
 
     /**
      * Letting go of resources used to store the offset.
+     * @param topic The topic formerly being consumed.
      */
     fun removeOffset(topic: String) = lock.withLock { offsets.remove(topic) }
 
@@ -138,18 +144,37 @@ class LatestOffsetFetcher(
     }
 }
 
+/**
+ * Used to request offset before consuming a given topic, seeing if fellow brokers are already consuming and know
+ * the latest offset.
+ * @property sender The one sending the request.
+ * @property senderQueue Queue name to publish the response to.
+ * @property topic The topic about to be consumed.
+ */
 class OffsetSharingRequest(
     val sender: String,
     val senderQueue: String,
     val topic: String
 ) {
+
     override fun toString(): String = objectMapper.writeValueAsString(this)
 
     companion object {
         private val objectMapper = ObjectMapper().registerModules(KotlinModule.Builder().build())
+
+        /**
+         * Converting the string format into the object.
+         * @param value The string form of the request.
+         * @return The request object.
+         */
         fun deserialize(value: String): OffsetSharingRequest =
             objectMapper.readValue(value, OffsetSharingRequest::class.java)
     }
 }
 
+/**
+ * Converting the string format into the object.
+ * @receiver The string form of the request.
+ * @return The request object.
+ */
 fun String.toOffsetSharingRequest() = OffsetSharingRequest.deserialize(this)

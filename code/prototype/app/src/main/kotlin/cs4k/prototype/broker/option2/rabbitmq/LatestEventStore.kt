@@ -1,5 +1,6 @@
-package cs4k.prototype.broker
+package cs4k.prototype.broker.option2.rabbitmq
 
+import cs4k.prototype.broker.common.Event
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -17,13 +18,19 @@ class LatestEventStore {
     /**
      * Obtaining the most recent event - passively waiting if there isn't any event yet.
      * If timeout is reached and there's no event registered, it will return null.
+     * @param topic The topic of the event.
+     * @return The latest event of given topic.
      */
     fun getLatestEvent(topic: String): Event? = lock.withLock {
         map[topic]
     }
 
     /**
-     * Set the latest event in a topic.
+     * Create and set the latest event in a topic.
+     * @param topic The topic of the event.
+     * @param message The message of the event.
+     * @param isLast If the event in question is the last of a given topic.
+     * @return The newly created event.
      */
     fun createAndSetLatestEvent(topic: String, message: String, isLast: Boolean) = lock.withLock {
         val id = map[topic]?.id?.plus(1L) ?: 0L
@@ -34,6 +41,7 @@ class LatestEventStore {
 
     /**
      * Removes the event of a given topic.
+     * @param topic The topic of the event being deleted.
      */
     fun removeLatestEvent(topic: String) = lock.withLock {
         map.remove(topic)

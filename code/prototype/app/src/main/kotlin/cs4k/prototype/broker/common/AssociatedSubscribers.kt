@@ -1,8 +1,7 @@
-package cs4k.prototype.broker
+package cs4k.prototype.broker.common
 
-import java.util.*
+import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
-import kotlin.collections.HashMap
 import kotlin.concurrent.withLock
 
 /**
@@ -28,35 +27,28 @@ class AssociatedSubscribers {
     }
 
     /**
-     * Returns true if there are no subscribers for a given topic.
+     * Check if there is no subscribers for a given topic.
+     *
+     * @param topic The topic to check.
+     * @return True if there are no subscribers for a given topic.
      */
     fun noSubscribers(topic: String) = lock.withLock {
-        map[topic]?.isEmpty() ?: true
-    }
-
-    fun updateLastEventListened(id: UUID, topic: String, lastId: Long) = lock.withLock {
-        map.computeIfPresent(topic) { _, subscribers ->
-            subscribers.map { subscriber: Subscriber ->
-                if (subscriber.id == id) {
-                    subscriber.copy(lastEventNotified = lastId)
-                } else {
-                    subscriber
-                }
-            }
-        }
+        map[topic].isNullOrEmpty()
     }
 
     /**
-     * Add a subscriber to a topic.
+     * Update the last event identifier of a subscriber.
      *
-     * @param topic The topic to add the subscriber to.
-     * @param subscriber The subscriber to add.
+     * @param id The identifier of the subscriber.
+     * @param topic The topic to which the subscriber is subscribed.
+     * @param lastEventId The new last event identifier.
      */
-    fun addToKey(topic: String, subscriber: Subscriber) {
+    fun updateLastEventListened(id: UUID, topic: String, lastEventId: Long) {
         lock.withLock {
-            map.compute(topic) { _, subscribers ->
-                subscribers?.let { it + subscriber } ?: listOf(subscriber)
-            }
+            val subscribers = map[topic] ?: return
+            val subscriber = subscribers.find { subscriber -> subscriber.id == id } ?: return
+            val updatedSubscriber = subscriber.copy(lastEventId = lastEventId)
+            map[topic] = subscribers - subscriber + updatedSubscriber
         }
     }
 
@@ -65,8 +57,9 @@ class AssociatedSubscribers {
      *
      * @param topic The topic to add the subscriber to.
      * @param subscriber The subscriber to add.
+     * @param onTopicAdd Method to be executed only if the subscriber subscribes to a new topic.
      */
-    fun addToKey(topic: String, subscriber: Subscriber, onTopicAdd: () -> Unit = {}) {
+    fun addToKey(topic: String, subscriber: Subscriber, onTopicAdd: (() -> Unit)? = null) {
         var newTopic = false
         lock.withLock {
             map.compute(topic) { _, subscribers ->
@@ -74,7 +67,7 @@ class AssociatedSubscribers {
                 subscribers?.let { it + subscriber } ?: listOf(subscriber)
             }
         }
-        if (newTopic) onTopicAdd()
+        if (onTopicAdd != null && newTopic) onTopicAdd()
     }
 
     /**
@@ -82,25 +75,9 @@ class AssociatedSubscribers {
      *
      * @param topic The topic to remove the subscriber from.
      * @param predicate A predicate to determine which subscriber to remove.
+     * @param onTopicRemove Method to be executed only if there are no more subscribers to the topic.
      */
-    fun removeIf(topic: String, predicate: (Subscriber) -> Boolean) {
-        lock.withLock {
-            map.computeIfPresent(topic) { _, subscribers ->
-                val subscriberToRemove = subscribers.find(predicate) ?: return@computeIfPresent subscribers
-                (subscribers - subscriberToRemove).ifEmpty {
-                    null
-                }
-            }
-        }
-    }
-
-    /**
-     * Remove a subscriber from a topic.
-     *
-     * @param topic The topic to remove the subscriber from.
-     * @param predicate A predicate to determine which subscriber to remove.
-     */
-    fun removeIf(topic: String, predicate: (Subscriber) -> Boolean, onTopicRemove: () -> Unit = {}) {
+    fun removeIf(topic: String, predicate: (Subscriber) -> Boolean, onTopicRemove: (() -> Unit)? = null) {
         var topicGone = false
         lock.withLock {
             map.computeIfPresent(topic) { _, subscribers ->
@@ -111,6 +88,6 @@ class AssociatedSubscribers {
                 }
             }
         }
-        if (topicGone) onTopicRemove()
+        if (onTopicRemove != null && topicGone) onTopicRemove()
     }
 }

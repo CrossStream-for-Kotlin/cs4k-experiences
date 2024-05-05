@@ -2,7 +2,7 @@ package cs4k.prototype.services
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
-import cs4k.prototype.broker.Broker
+import cs4k.prototype.broker.option1.Broker
 import cs4k.prototype.domain.Game
 import cs4k.prototype.domain.GameInfo
 import cs4k.prototype.http.models.output.GameOutputModel
@@ -68,7 +68,6 @@ class TicTacToeService(
 
     /**
      * Be notified of the game.
-     * @param player the player part of the game.
      * @param id the id of the game.
      */
     fun watch(id: Int): SseEmitter {
@@ -130,8 +129,7 @@ class TicTacToeService(
 
     /**
      * Notify the player of the game state.
-     * @param gameId the id of the game.
-     * @param game the game to be played.
+     * @param gameInfo The game information.
      */
     private fun notifyGameState(gameInfo: GameInfo) {
         broker.publish(
