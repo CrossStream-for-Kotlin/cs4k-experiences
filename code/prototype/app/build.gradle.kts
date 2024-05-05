@@ -107,7 +107,7 @@ task<Exec>("rabbitUp") {
 }
 
 tasks.register<Exec>("rabbitUpCluster") {
-    val services = listOf("rabbit-mq1", "rabbit-mq2", "rabbit-mq3")
+    val services = listOf("rabbit-mq1", "rabbit-mq3")
 
     services.forEach { service ->
         commandLine("docker-compose", "up", "-d", "--build", service)

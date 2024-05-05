@@ -64,6 +64,8 @@ services:
       RABBITMQ_ERLANG_COOKIE: "SWQOKODSQALRPCLNMEQG"
       RABBITMQ_DEFAULT_USER: "user"
       RABBITMQ_DEFAULT_PASS: "password"
+    volumes:
+      - ./tests/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
     networks:
       - rabbitmq-cluster
 
@@ -78,8 +80,10 @@ services:
       RABBITMQ_ERLANG_COOKIE: "SWQOKODSQALRPCLNMEQG"
       RABBITMQ_DEFAULT_USER: "user"
       RABBITMQ_DEFAULT_PASS: "password"
+    volumes:
+      - ./tests/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
     networks:
-      - rabbitmq-cluster
+       - rabbitmq-cluster
     depends_on:
       - rabbit-mq1
 
@@ -94,6 +98,8 @@ services:
       RABBITMQ_ERLANG_COOKIE: "SWQOKODSQALRPCLNMEQG"
       RABBITMQ_DEFAULT_USER: "user"
       RABBITMQ_DEFAULT_PASS: "password"
+    volumes:
+     - ./tests/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
     networks:
       - rabbitmq-cluster
     depends_on:
