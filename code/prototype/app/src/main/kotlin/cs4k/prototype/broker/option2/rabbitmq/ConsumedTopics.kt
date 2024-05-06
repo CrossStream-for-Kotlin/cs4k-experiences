@@ -15,6 +15,11 @@ import kotlin.time.Duration
 
 class ConsumedTopics {
 
+    /**
+     * Represents the information regarding an event.
+     * @param id Sequential event ID.
+     * @param payload The message of the event joined with the indicator if the message is the last one of the topic.
+     */
     private class EventInfo(
         val id: Long,
         val payload: String
@@ -39,26 +44,46 @@ class ConsumedTopics {
         }
     }
 
+    /**
+     * Information regarding consumption of a given topic.
+     * @param channel Consuming channel.
+     * @param lastOffset The offset related to the last event of the topic.
+     * @param latestEvent The latest event read by the broker.
+     * @param isBeingAnalyzed If the consumption of the topic is being analyzed for eventual cancelling.
+     */
     private data class ConsumeInfo(
         val channel: Channel? = null,
-        val consumerTag: String? = null,
         val lastOffset: Long? = null,
         val latestEvent: EventInfo? = null,
         val isBeingAnalyzed: Boolean = false
     )
 
+    // Linking the topic to its consumption.
     private val topicToConsumeInfo = HashMap<String, ConsumeInfo>()
 
+    // Locking to control concurrency.
     private val lock = ReentrantLock()
 
+    /**
+     * Structure of an offset request.
+     * @param continuation Remainder of the code that is resumed when offset is obtained.
+     * @param topic Topic that the one requesting wants the offset from.
+     * @param offset The offset of the last event of the topic.
+     */
     private class OffsetRequest(
         val continuation: Continuation<Unit>,
         val topic: String,
         var offset: Long? = null
     )
 
+    // All requests.
     private val offsetRequestList = mutableListOf<OffsetRequest>()
 
+    /**
+     * Checks if the topic is being consumed.
+     * @param topic The topic needing to test.
+     * @return true if it is being consumed, false otherwise.
+     */
     fun isTopicBeingConsumed(topic: String): Boolean = lock.withLock {
         return topicToConsumeInfo[topic] != null
     }
@@ -134,6 +159,9 @@ class ConsumedTopics {
      * Reading the latest offset stored.
      * If there are no available offsets, then it will passively wait until notified.
      * @param topic The topic about to be consumed.
+     * @param scope The scope of the running coroutine.
+     * @param fetchOffset Suspend function that is able to externally fetch offset.
+     * @return The latest offset available. Will return 0 if cancelled.
      */
     private suspend fun getOffset(topic: String, scope: CoroutineScope, fetchOffset: suspend (String) -> Long): Long {
         var myRequest: OffsetRequest? = null
@@ -178,6 +206,7 @@ class ConsumedTopics {
      * If there are no available offsets, then it will passively wait until notified or until timeout is reached.
      * @param topic The topic about to be consumed.
      * @param timeout Maximum amount of wait tine.
+     * @return The latest offset. If timeout is reached, then the function will return 0.
      */
     fun getOffset(topic: String, timeout: Duration = Duration.INFINITE, fetchOffset: suspend (String) -> Long): Long {
         return runBlocking {
@@ -228,11 +257,18 @@ class ConsumedTopics {
         }
     }
 
+    /**
+     * Removes all information related to the topic.
+     * @param topic The topic no longer being consumed.
+     */
     fun removeTopic(topic: String) = lock.withLock {
         topicToConsumeInfo.remove(topic)
         Unit
     }
 
+    /**
+     * Removing all information stored.
+     */
     fun removeAll() = lock.withLock {
         topicToConsumeInfo.clear()
     }

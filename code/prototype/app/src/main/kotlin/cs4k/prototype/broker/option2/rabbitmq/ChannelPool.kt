@@ -17,7 +17,6 @@ import kotlin.time.Duration
 
 /**
  * Manager of connections created from a single connection.
- * Instead of closing channels, they're reused when a user stops using it.
  * @param connection The connection from which channels are created from.
  * @param maxChannels The maximum amount of channels that can be created at once.
  */
@@ -37,8 +36,7 @@ class ChannelPool(
     /**
      * Information related to the channel.
      * @property channel The channel.
-     * @property isBeingUsed If the channel is being used.
-     * @property consumerTag The consumerTag linked with a consume done in this channel. If null, then the channel
+     * @property consumerTag The consumerTag linked with a consumption done in this channel. If null, then the channel
      * isn't being used for consuming.
      */
     private class ChannelEntry(
@@ -144,8 +142,7 @@ class ChannelPool(
     }
 
     /**
-     * Makes the channel free for the taking, making sure to cancel consumption if it was used for that.
-     * If there was someone wanting a channel, it is handed to them instead.
+     * Makes the channel free for the taking.
      * @param channel The channel that the user doesn't want to use.
      */
     fun stopUsingChannel(channel: Channel) {

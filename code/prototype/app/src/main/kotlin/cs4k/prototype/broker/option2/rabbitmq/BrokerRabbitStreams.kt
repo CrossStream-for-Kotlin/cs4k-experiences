@@ -50,13 +50,7 @@ class BrokerRabbitStreams(
     // Executor in charge of cleaning unheard consumers.
     private val cleanExecutor = Executors.newSingleThreadScheduledExecutor()
 
-    // Storages for consuming channels and latest offsets and events.
-    /*
-    private val consumeChannelStore = ConsumeChannelStore()
-    private val latestEventStore = LatestEventStore()
-    private val latestOffsetFetcher = LatestOffsetFetcher { topic -> fetchOffset(topic) }
-
-     */
+    // Storage for topics that are consumed, storing channel, last offset and last event.
     private val consumedTopics = ConsumedTopics()
 
     /**
@@ -337,7 +331,6 @@ class BrokerRabbitStreams(
     /**
      * Gracefully letting go of resources related to the topic.
      * @param topic The topic formerly consumed.
-     * @param channel The channel that consumption was being done from.
      */
     private fun unListen(topic: String) {
         if (associatedSubscribers.noSubscribers(topic)) {
