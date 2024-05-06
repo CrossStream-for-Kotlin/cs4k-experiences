@@ -2,7 +2,8 @@ package cs4k.prototype.broker
 
 import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.Event
-import cs4k.prototype.broker.option2.rabbitmq.BrokerRabbitStreams
+import cs4k.prototype.broker.option1.Broker
+import cs4k.prototype.broker.option2.redis.BrokerRedis
 import org.junit.jupiter.api.AfterAll
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
@@ -22,14 +23,13 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 class BrokerTests {
-
     /*
     @Test
     fun `cannot create a broker with a negative database connection pool size`() {
         // Arrange
         // Act
         // Assert
-        assertFailsWith<DbConnectionPoolSizeException> {
+        assertFailsWith<BrokerException.ConnectionPoolSizeException> {
             Broker(dbConnectionPoolSize = -10)
         }
     }
@@ -39,11 +39,12 @@ class BrokerTests {
         // Arrange
         // Act
         // Assert
-        assertFailsWith<DbConnectionPoolSizeException> {
+        assertFailsWith<BrokerException.ConnectionPoolSizeException> {
             Broker(dbConnectionPoolSize = 1000)
         }
     }
-*/
+     */
+
     @Test
     fun `new subscriber in 1 topic should receive the last message`() {
         // Arrange
@@ -294,12 +295,19 @@ class BrokerTests {
         assertTrue(reachedZero)
 
         assertEquals(NUMBER_OF_MESSAGES, eventsReceived.size)
-        eventsReceived.forEachIndexed { idx, event ->
+        eventsReceived.forEach { event ->
+            assertEquals(topic, event.topic)
+            assertContains(messages.indices, event.id.toInt())
+            assertContains(messages, event.message)
+            assertFalse(event.isLast)
+        }
+
+        /* eventsReceived.forEachIndexed { idx, event ->
             assertEquals(topic, event.topic)
             assertEquals(idx.toLong(), event.id)
             assertEquals(messages[idx], event.message)
             assertFalse(event.isLast)
-        }
+        } */
 
         // Clean Up
         unsubscribe()
@@ -342,12 +350,19 @@ class BrokerTests {
 
         val eventsReceivedSet = eventsReceived.toSet()
         assertEquals(NUMBER_OF_MESSAGES, eventsReceivedSet.size)
-        eventsReceivedSet.forEachIndexed { idx, event ->
+        eventsReceivedSet.forEach { event ->
+            assertEquals(topic, event.topic)
+            assertContains(messages.indices, event.id.toInt())
+            assertContains(messages, event.message)
+            assertFalse(event.isLast)
+        }
+
+        /* eventsReceivedSet.forEachIndexed { idx, event ->
             assertEquals(topic, event.topic)
             assertEquals(idx.toLong(), event.id)
             assertEquals(messages[idx], event.message)
             assertFalse(event.isLast)
-        }
+        } */
 
         // Clean Up
         unsubscribes.forEach { unsubscribe -> unsubscribe() }
@@ -1105,13 +1120,11 @@ class BrokerTests {
             // - PostgreSQL
             // Broker()
 
-            // - Redis
-            // BrokerRedisPubSubJedis()
-            // BrokerRedisPubSubLettuce()
-            // BrokerRedisStreams()
+        // - Redis
+        BrokerRedis()
 
-            // - RabbitMQ
-            BrokerRabbitStreams()
+        // - RabbitMQ
+        // BrokerRabbitStreams()
 
         private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { createBrokerInstance() }
 
