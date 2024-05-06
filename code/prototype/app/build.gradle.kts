@@ -49,7 +49,7 @@ dependencies {
     testImplementation(kotlin("test"))
 
     // For HikariCP
-    implementation("com.zaxxer:HikariCP:4.0.3")
+    implementation("com.zaxxer:HikariCP:5.1.0")
 }
 
 tasks.withType<KotlinCompile> {
@@ -105,26 +105,10 @@ task<Exec>("rabbitUp") {
     commandLine("docker-compose", "up", "-d", "--build", "rabbit-mq")
 }
 
-tasks.register<Exec>("rabbitUpCluster") {
-    val services = listOf("rabbit-mq1", "rabbit-mq3")
-
-    services.forEach { service ->
-        commandLine("docker-compose", "up", "-d", "--build", service)
-        isIgnoreExitValue = true
-    }
-}
-
-tasks.register<Exec>("rabbitUp2") {
-    val services = listOf("rabbit-mq1", "rabbit-mq2")
-
-    services.forEach { service ->
-        commandLine("docker-compose", "up", "-d", "--build", service)
-        isIgnoreExitValue = true
-    }
-}
-
-task<Exec>("rabbitStreamsUp") {
-    commandLine("docker-compose", "up", "-d", "--build", "rabbit-mq-streams")
+task<Exec>("rabbitClusterUp") {
+    val command = arrayOf("docker-compose", "up", "-d", "--build")
+    val services = command + arrayOf("rabbit-mq1", "rabbit-mq2", "rabbit-mq3")
+    commandLine(*services)
 }
 
 task<Exec>("rabbitDown") {
