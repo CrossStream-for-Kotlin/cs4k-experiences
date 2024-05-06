@@ -91,11 +91,11 @@ task<Exec>("dbTestsDown") {
  * Redis related tasks
  */
 task<Exec>("redisUp") {
-    commandLine("docker-compose", "up", "-d", "--build", "redis")
+    commandLine("docker-compose", "-f", "../docker-compose-redis.yaml", "up", "-d", "--build", "redis")
 }
 
 task<Exec>("redisDown") {
-    commandLine("docker-compose", "down")
+    commandLine("docker-compose", "-f", "../docker-compose-redis.yaml", "down")
 }
 
 /**
