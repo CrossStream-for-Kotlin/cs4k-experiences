@@ -36,7 +36,8 @@ class BrokerRabbitStreams(
     private val retryExecutor = RetryExecutor()
 
     // Channel pool
-    private val channelPool = ChannelPool(connectionFactory.newConnection(clusterAddresses))
+    private val consumingChannelPool = ChannelPool(connectionFactory.newConnection(clusterAddresses))
+    private val publishingChannelPool = ChannelPool(connectionFactory.newConnection(clusterAddresses))
 
     // Name of stream used to publish messages to.
     private val streamName = "cs4k-notifications"
@@ -57,31 +58,33 @@ class BrokerRabbitStreams(
      * Requesting an offset from surrounding brokers to consume from common stream.
      * @param offset The topic that consumer wants to consume.
      */
-    private suspend fun fetchOffset(topic: String): Long {
-        val channel = channelPool.getChannel()
+    private suspend fun fetchOffset(topic: String): Long? {
+        val consumingChannel = consumingChannelPool.getChannel()
+        val publishingChannel = publishingChannelPool.getChannel()
         val offset =
             withTimeoutOrNull(subscribeDelay) {
                 try {
                     suspendCancellableCoroutine { continuation ->
-                        val queueName = channel.queueDeclare().queue
+                        val queueName = consumingChannel.queueDeclare().queue
                         val request = OffsetSharingRequest(brokerId, queueName, topic)
-                        channel.basicPublish(offsetExchange, "", null, request.toString().toByteArray())
-                        val consumerTag = channel.basicConsume(
+                        publishingChannel.basicPublish(offsetExchange, "", null, request.toString().toByteArray())
+                        val consumerTag = consumingChannel.basicConsume(
                             queueName,
-                            OffsetReceiverHandler(continuation, channel)
+                            OffsetReceiverHandler(continuation, consumingChannel)
                         )
-                        channelPool.registerConsuming(channel, consumerTag)
+                        consumingChannelPool.registerConsuming(consumingChannel, consumerTag)
                     }
                 } finally {
-                    channelPool.stopUsingChannel(channel)
+                    publishingChannelPool.stopUsingChannel(publishingChannel)
+                    consumingChannelPool.stopUsingChannel(consumingChannel)
                 }
-            } ?: 0L
+            }
         return offset
     }
 
     // Retry condition.
     private val retryCondition: (throwable: Throwable) -> Boolean = { throwable ->
-        !(throwable is IOException && (channelPool.isClosed || channelPool.isClosed))
+        !(throwable is IOException && (consumingChannelPool.isClosed || consumingChannelPool.isClosed))
     }
 
     /**
@@ -99,7 +102,7 @@ class BrokerRabbitStreams(
             val message = splitPayload.dropLast(1).joinToString(";")
             val isLast = splitPayload.last().toBoolean()
             val eventToNotify = consumedTopics.createAndSetLatestEvent(topic, message, isLast)
-            logger.info("event received -> {}", eventToNotify)
+            logger.info("event received from stream -> {}", eventToNotify)
             associatedSubscribers
                 .getAll(topic)
                 .forEach { subscriber ->
@@ -149,14 +152,14 @@ class BrokerRabbitStreams(
             val topic = request.topic
             val offset = consumedTopics.getOffsetNoWait(topic)
             if (request.sender != brokerId && offset != null) {
-                val publishChannel = channelPool.getChannel()
+                val publishChannel = publishingChannelPool.getChannel()
                 publishChannel.basicPublish(
                     "",
                     request.senderQueue,
                     null,
                     offset.toString().toByteArray()
                 )
-                channelPool.stopUsingChannel(publishChannel)
+                consumingChannelPool.stopUsingChannel(publishChannel)
             }
             val deliveryTag = envelope.deliveryTag
             channel.basicAck(deliveryTag, false)
@@ -190,7 +193,7 @@ class BrokerRabbitStreams(
      */
     private fun createStream() {
         retryExecutor.execute({ BrokerLostConnectionException() }, {
-            val consumingChannel = channelPool.getChannel()
+            val consumingChannel = consumingChannelPool.getChannel()
             consumingChannel.queueDeclare(
                 streamName,
                 true,
@@ -201,7 +204,7 @@ class BrokerRabbitStreams(
                     "x-max-length-bytes" to 100_000
                 )
             )
-            channelPool.stopUsingChannel(consumingChannel)
+            consumingChannelPool.stopUsingChannel(consumingChannel)
         }, retryCondition)
     }
 
@@ -210,7 +213,7 @@ class BrokerRabbitStreams(
      */
     private fun enableOffsetSharing() {
         retryExecutor.execute({ BrokerLostConnectionException() }, {
-            val channel = channelPool.getChannel()
+            val channel = consumingChannelPool.getChannel()
             channel.queueDeclare(
                 brokerId,
                 true,
@@ -224,7 +227,7 @@ class BrokerRabbitStreams(
             channel.exchangeDeclare(offsetExchange, "fanout")
             channel.queueBind(brokerId, offsetExchange, "")
             val consumerTag = channel.basicConsume(brokerId, OffsetShareHandler(channel))
-            channelPool.registerConsuming(channel, consumerTag)
+            consumingChannelPool.registerConsuming(channel, consumerTag)
         }, retryCondition)
     }
 
@@ -238,7 +241,6 @@ class BrokerRabbitStreams(
 
     /**
      * Subscribe to a topic.
-     *
      * @param topic The topic name.
      * @param handler The handler to be called when there is a new event.
      * @return The callback to be called when unsubscribing.
@@ -299,10 +301,10 @@ class BrokerRabbitStreams(
      * Listen for notifications.
      */
     private fun listen(topic: String) {
-        if (consumedTopics.isTopicBeingConsumed(topic)) return
-        val offset = consumedTopics.getOffset(topic, subscribeDelay) { fetchOffset(topic) }
+        if (consumedTopics.isTopicBeingConsumed(topic) || consumedTopics.isBeingAnalyzed(topic)) return
+        val offset = consumedTopics.getOffset(topic, subscribeDelay) { fetchOffset(topic) } ?: "first"
         retryExecutor.execute({ BrokerLostConnectionException() }, {
-            val consumingChannel = channelPool.getChannel()
+            val consumingChannel = consumingChannelPool.getChannel()
             consumedTopics.setChannel(topic, consumingChannel)
             consumingChannel.basicQos(100)
             val consumerTag = consumingChannel.basicConsume(
@@ -314,7 +316,8 @@ class BrokerRabbitStreams(
                 ),
                 BrokerConsumer(topic, consumingChannel)
             )
-            channelPool.registerConsuming(consumingChannel, consumerTag)
+            consumingChannelPool.registerConsuming(consumingChannel, consumerTag)
+            logger.info("new consumer -> {}", topic)
         }, retryCondition)
     }
 
@@ -324,7 +327,7 @@ class BrokerRabbitStreams(
      */
     private fun getLastEvent(topic: String): Event? {
         val event = consumedTopics.getLatestEvent(topic)
-        logger.info("last event received -> {}", event)
+        logger.info("last event received from memory -> {}", event)
         return event
     }
 
@@ -337,7 +340,7 @@ class BrokerRabbitStreams(
             logger.info("consumer for topic {} closing", topic)
             consumedTopics.getChannel(topic)?.let { channel ->
                 retryExecutor.execute({ BrokerLostConnectionException() }, {
-                    channelPool.stopUsingChannel(channel)
+                    consumingChannelPool.stopUsingChannel(channel)
                 }, retryCondition)
             }
             consumedTopics.removeTopic(topic)
@@ -355,7 +358,7 @@ class BrokerRabbitStreams(
     private fun notify(topic: String, message: String, isLastMessage: Boolean) {
         val payload = "$message;$isLastMessage"
         retryExecutor.execute({ BrokerLostConnectionException() }, {
-            val publishingChannel = channelPool.getChannel()
+            val publishingChannel = publishingChannelPool.getChannel()
             publishingChannel.basicPublish(
                 "",
                 streamName,
@@ -366,7 +369,7 @@ class BrokerRabbitStreams(
                 payload.toByteArray()
             )
             logger.info("sent with topic:{} the message: {}", topic, payload)
-            channelPool.stopUsingChannel(publishingChannel)
+            publishingChannelPool.stopUsingChannel(publishingChannel)
         }, retryCondition)
     }
 
@@ -379,8 +382,9 @@ class BrokerRabbitStreams(
     fun shutdown() {
         if (isShutdown.compareAndSet(false, true)) {
             cleanExecutor.shutdown()
-            channelPool.getChannel().queueDelete(brokerId)
-            channelPool.close()
+            consumingChannelPool.getChannel().queueDelete(brokerId)
+            publishingChannelPool.close()
+            consumingChannelPool.close()
             consumedTopics.removeAll()
         } else {
             throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")

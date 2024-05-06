@@ -107,6 +107,10 @@ class ConsumedTopics {
             ?: ConsumeInfo(channel = channel)
     }
 
+    fun isBeingAnalyzed(topic: String) = lock.withLock {
+        topicToConsumeInfo[topic]?.isBeingAnalyzed ?: false
+    }
+
     /**
      * Marks the channel as being used for analysis for eventual cleanup.
      * @param topic The topic being consumed.
@@ -163,7 +167,7 @@ class ConsumedTopics {
      * @param fetchOffset Suspend function that is able to externally fetch offset.
      * @return The latest offset available. Will return 0 if cancelled.
      */
-    private suspend fun getOffset(topic: String, scope: CoroutineScope, fetchOffset: suspend (String) -> Long): Long {
+    private suspend fun getOffset(topic: String, scope: CoroutineScope, fetchOffset: suspend (String) -> Long?): Long? {
         var myRequest: OffsetRequest? = null
         var offset: Long? = null
         var needsFetching = false
@@ -185,7 +189,7 @@ class ConsumedTopics {
                     }
                 }
                 if (needsFetching) {
-                    scope.launch { setOffset(topic, fetchOffset(topic)) }
+                    scope.launch { fetchOffset(topic)?.let { setOffset(topic, it) } }
                 }
             }
         } catch (e: CancellationException) {
@@ -198,7 +202,7 @@ class ConsumedTopics {
             }
             throw e
         }
-        return offset ?: myRequest?.offset ?: 0L
+        return offset ?: myRequest?.offset
     }
 
     /**
@@ -206,18 +210,18 @@ class ConsumedTopics {
      * If there are no available offsets, then it will passively wait until notified or until timeout is reached.
      * @param topic The topic about to be consumed.
      * @param timeout Maximum amount of wait tine.
-     * @return The latest offset. If timeout is reached, then the function will return 0.
+     * @return The latest offset, if able to be obtained.
      */
-    fun getOffset(topic: String, timeout: Duration = Duration.INFINITE, fetchOffset: suspend (String) -> Long): Long {
+    fun getOffset(topic: String, timeout: Duration = Duration.INFINITE, fetchOffset: suspend (String) -> Long?): Long? {
         return runBlocking {
             var result: Long? = null
             try {
                 withTimeout(timeout) {
                     result = getOffset(topic, this, fetchOffset)
-                    result ?: 0L
+                    result
                 }
             } catch (e: CancellationException) {
-                result ?: 0L
+                result
             }
         }
     }
