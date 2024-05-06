@@ -18,13 +18,12 @@ import cs4k.prototype.broker.option1.ChannelCommandOperation.Listen
 import cs4k.prototype.broker.option1.ChannelCommandOperation.UnListen
 import org.postgresql.PGConnection
 import org.slf4j.LoggerFactory
-import org.springframework.stereotype.Component
 import java.sql.Connection
 import java.sql.SQLException
 import java.util.UUID
 import kotlin.concurrent.thread
 
-//@Component
+// @Component
 class Broker(
     private val dbConnectionPoolSize: Int = 10
 ) {

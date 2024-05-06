@@ -43,7 +43,6 @@ class ChannelPool(
      */
     private class ChannelEntry(
         val channel: Channel,
-        var isBeingUsed: Boolean = true,
         var consumerTag: String? = null
     )
 
@@ -78,21 +77,14 @@ class ChannelPool(
         try {
             suspendCancellableCoroutine<Unit> { continuation ->
                 lock.withLock {
-                    if (channels.all { channel -> channel.isBeingUsed }) {
-                        if (channels.count() == maxChannels) {
-                            val request = ChannelRequest(continuation)
-                            myRequest = request
-                            channelRequestList.add(request)
-                        } else {
-                            val myChannel = connection.createChannel()
-                            channel = myChannel
-                            channels.add(ChannelEntry(myChannel))
-                            continuation.resumeWith(Result.success(Unit))
-                        }
+                    if (channels.count() == maxChannels) {
+                        val request = ChannelRequest(continuation)
+                        myRequest = request
+                        channelRequestList.add(request)
                     } else {
-                        val entry = channels.first { !it.isBeingUsed }
-                        entry.isBeingUsed = true
-                        channel = entry.channel
+                        val myChannel = connection.createChannel()
+                        channel = myChannel
+                        channels.add(ChannelEntry(myChannel))
                         continuation.resumeWith(Result.success(Unit))
                     }
                 }
@@ -163,16 +155,12 @@ class ChannelPool(
                 it.channel.connection.id == channel.connection.id && it.channel.channelNumber == channel.channelNumber
             }
             requireNotNull(channelInfo) { "Channel provided must have been created by the pool" }
-            if (channelInfo.consumerTag != null) {
-                channelInfo.channel.basicCancel(channelInfo.consumerTag)
-                channelInfo.consumerTag = null
-            }
+            channel.close()
+            channels.remove(channelInfo)
             if (channelRequestList.isNotEmpty()) {
                 val entry = channelRequestList.removeFirst()
-                entry.channel = channel
+                entry.channel = connection.createChannel()
                 entry.continuation.resumeWith(Result.success(Unit))
-            } else {
-                channelInfo.isBeingUsed = false
             }
         }
     }

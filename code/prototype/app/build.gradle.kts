@@ -37,7 +37,6 @@ dependencies {
     implementation("org.postgresql:postgresql:42.7.0")
 
     // For RabbitMQ
-    implementation("com.rabbitmq:stream-client:0.15.0")
     implementation("com.rabbitmq:amqp-client:5.21.0")
 
     // For Redis

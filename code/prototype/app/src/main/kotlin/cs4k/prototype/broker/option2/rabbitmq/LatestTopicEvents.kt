@@ -35,7 +35,7 @@ class LatestTopicEvents {
          * @param event The complete event.
          */
         constructor(event: Event) :
-                this(event.id, listOf(event.message, event.isLast.toString()).joinToString(";"))
+            this(event.id, listOf(event.message, event.isLast.toString()).joinToString(";"))
 
         /**
          * Converting the information of the event into an actual event to notify a subscriber.
