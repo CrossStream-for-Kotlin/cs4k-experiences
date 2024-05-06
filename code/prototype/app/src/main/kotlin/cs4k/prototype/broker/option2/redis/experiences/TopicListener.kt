@@ -1,4 +1,4 @@
-package cs4k.prototype.broker.option2.redis
+package cs4k.prototype.broker.option2.redis.experiences
 
 import kotlinx.coroutines.Job
 

@@ -1,41 +1,48 @@
-package cs4k.prototype.broker.option2.redis
+package cs4k.prototype.broker.option2.redis.experiences
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import cs4k.prototype.broker.common.AssociatedSubscribers
-import cs4k.prototype.broker.common.BrokerException
+import cs4k.prototype.broker.common.BrokerException.BrokerConnectionException
 import cs4k.prototype.broker.common.BrokerException.BrokerLostConnectionException
 import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.BrokerException.ConnectionPoolSizeException
 import cs4k.prototype.broker.common.BrokerException.UnexpectedBrokerException
-import cs4k.prototype.broker.common.Environment
+import cs4k.prototype.broker.common.Environment.getRedisHost
+import cs4k.prototype.broker.common.Environment.getRedisPort
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
 import cs4k.prototype.broker.common.Subscriber
-import io.lettuce.core.RedisClient
-import io.lettuce.core.RedisURI
-import io.lettuce.core.api.StatefulRedisConnection
-import io.lettuce.core.pubsub.RedisPubSubAdapter
-import io.lettuce.core.support.ConnectionPoolSupport
-import org.apache.commons.pool2.impl.GenericObjectPool
-import org.apache.commons.pool2.impl.GenericObjectPoolConfig
+import cs4k.prototype.broker.option2.redis.EventProp
 import org.slf4j.LoggerFactory
+import redis.clients.jedis.Jedis
+import redis.clients.jedis.JedisPool
+import redis.clients.jedis.JedisPoolConfig
+import redis.clients.jedis.JedisPubSub
+import redis.clients.jedis.exceptions.JedisException
 import java.util.UUID
+import kotlin.concurrent.thread
 
-// V2:
-//      - Redis Pub/Sub using Redis as an in-memory data structure (key-value (hash) pair)
-//      - Lettuce client
+// - Jedis client
+// - Redis Pub/Sub using Redis as an in-memory data structure (key-value (hash) pair)
+
+// Not in use because:
+//    - All 'BrokerRedisJedisPubSub' instances receive all events,
+//      regardless of whether they have subscribers for those events.
 
 // @Component
-class BrokerRedisPubSubLettuce(private val dbConnectionPoolSize: Int = 10) {
+class BrokerRedisJedisPubSub(
+    private val dbConnectionPoolSize: Int = 10
+) {
 
     init {
         // Check database connection pool size.
         checkDbConnectionPoolSize(dbConnectionPoolSize)
     }
 
-    // Broker shutdown state.
-    private var isShutdown = false
+    // Channel prefix and pattern.
+    private val channelPrefix = "cs4k-"
+    private val channelPattern = "$channelPrefix*"
 
     // Association between topics and subscribers lists.
     private val associatedSubscribers = AssociatedSubscribers()
@@ -43,41 +50,35 @@ class BrokerRedisPubSubLettuce(private val dbConnectionPoolSize: Int = 10) {
     // Retry executor.
     private val retryExecutor = RetryExecutor()
 
-    // Redis client.
-    private val redisClient = retryExecutor.execute({ BrokerException.BrokerConnectionException() }, {
-        createRedisClient()
-    })
-
-    // Connection to asynchronous subscribe, unsubscribe and publish.
-    private val pubSubConnection = retryExecutor.execute({ BrokerException.BrokerConnectionException() }, {
-        redisClient.connectPubSub()
-    })
-
     // Connection pool.
-    private val connectionPool = retryExecutor.execute({ BrokerException.BrokerConnectionException() }, {
-        createConnectionPool(dbConnectionPoolSize, redisClient)
+    private val connectionPool = retryExecutor.execute({ BrokerConnectionException() }, {
+        createConnectionPool(dbConnectionPoolSize)
     })
 
     // Retry condition.
-    private val retryCondition: (throwable: Throwable) -> Boolean = { _ -> true }
+    private val retryCondition: (throwable: Throwable) -> Boolean = { throwable ->
+        !(throwable is JedisException && connectionPool.isClosed)
+    }
 
-    private val singletonRedisPubSubAdapter = object : RedisPubSubAdapter<String, String>() {
+    init {
+        // Start a new thread to subscribe pattern and process events.
+        thread {
+            subscribePattern()
+        }
+    }
 
-        override fun message(channel: String?, message: String?) {
-            if (channel == null || message == null) throw UnexpectedBrokerException()
+    private val singletonJedisPubSub = object : JedisPubSub() {
+
+        override fun onPMessage(pattern: String?, channel: String?, message: String?) {
+            if (pattern == null || channel == null || message == null) throw UnexpectedBrokerException()
             logger.info("new message '{}' channel '{}'", message, channel)
 
-            val subscribers = associatedSubscribers.getAll(channel)
+            val subscribers = associatedSubscribers.getAll(channel.substringAfter(channelPrefix))
             if (subscribers.isNotEmpty()) {
                 val event = deserialize(message)
                 subscribers.forEach { subscriber -> subscriber.handler(event) }
             }
         }
-    }
-
-    init {
-        // Add a listener.
-        pubSubConnection.addListener(singletonRedisPubSubAdapter)
     }
 
     /**
@@ -90,12 +91,10 @@ class BrokerRedisPubSubLettuce(private val dbConnectionPoolSize: Int = 10) {
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
-        if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
+        if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
 
         val subscriber = Subscriber(UUID.randomUUID(), handler)
-        associatedSubscribers.addToKey(topic, subscriber) {
-            subscribeTopic(topic)
-        }
+        associatedSubscribers.addToKey(topic, subscriber)
         logger.info("new subscriber topic '{}' id '{}", topic, subscriber.id)
 
         getLastEvent(topic)?.let { event -> handler(event) }
@@ -113,7 +112,7 @@ class BrokerRedisPubSubLettuce(private val dbConnectionPoolSize: Int = 10) {
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
-        if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::publish.name}.")
+        if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::publish.name}.")
 
         publishMessage(topic, message, isLastMessage)
     }
@@ -125,13 +124,10 @@ class BrokerRedisPubSubLettuce(private val dbConnectionPoolSize: Int = 10) {
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     fun shutdown() {
-        if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
+        if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
 
-        pubSubConnection.removeListener(singletonRedisPubSubAdapter)
-        pubSubConnection.close()
+        unsubscribePattern()
         connectionPool.close()
-        redisClient.shutdown()
-        isShutdown = true
     }
 
     /**
@@ -141,37 +137,33 @@ class BrokerRedisPubSubLettuce(private val dbConnectionPoolSize: Int = 10) {
      * @param subscriber The subscriber who unsubscribed.
      */
     private fun unsubscribe(topic: String, subscriber: Subscriber) {
-        associatedSubscribers.removeIf(
-            topic = topic,
-            predicate = { sub -> sub.id == subscriber.id },
-            onTopicRemove = { unsubscribeTopic(topic) }
-        )
+        associatedSubscribers.removeIf(topic, { sub -> sub.id == subscriber.id })
         logger.info("unsubscribe topic '{}' id '{}", topic, subscriber.id)
     }
 
     /**
-     * Subscribe topic.
+     * Subscribe pattern.
      *
-     * @param topic The topic name.
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
-    private fun subscribeTopic(topic: String) {
+    private fun subscribePattern() {
         retryExecutor.execute({ BrokerLostConnectionException() }, {
-            logger.info("subscribe new topic '{}'", topic)
-            pubSubConnection.async().subscribe(topic)
+            connectionPool.resource.use {
+                logger.info("psubscribe channel '{}'", channelPattern)
+                it.psubscribe(singletonJedisPubSub, channelPattern)
+            }
         }, retryCondition)
     }
 
     /**
-     * UnSubscribe topic.
+     * UnSubscribe pattern.
      *
-     * @param topic The topic name.
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
-    private fun unsubscribeTopic(topic: String) {
+    private fun unsubscribePattern() {
         retryExecutor.execute({ BrokerLostConnectionException() }, {
-            logger.info("unsubscribe topic '{}'", topic)
-            pubSubConnection.async().unsubscribe(topic)
+            logger.info("punsubscribe channel '{}'", channelPattern)
+            singletonJedisPubSub.punsubscribe(channelPattern)
         }, retryCondition)
     }
 
@@ -185,14 +177,16 @@ class BrokerRedisPubSubLettuce(private val dbConnectionPoolSize: Int = 10) {
      */
     private fun publishMessage(topic: String, message: String, isLastMessage: Boolean) {
         retryExecutor.execute({ BrokerLostConnectionException() }, {
-            val event = Event(
-                topic = topic,
-                id = getEventIdAndUpdateHistory(topic, message, isLastMessage),
-                message = message,
-                isLast = isLastMessage
-            )
-            pubSubConnection.async().publish(topic, serialize(event))
-            logger.info("publish topic '{}' event '{}", topic, event)
+            connectionPool.resource.use { conn ->
+                val event = Event(
+                    topic = topic,
+                    id = getEventIdAndUpdateHistory(conn, topic, message, isLastMessage),
+                    message = message,
+                    isLast = isLastMessage
+                )
+                conn.publish(channelPrefix + topic, serialize(event))
+                logger.info("publish topic '{}' event '{}", topic, event)
+            }
         }, retryCondition)
     }
 
@@ -201,31 +195,30 @@ class BrokerRedisPubSubLettuce(private val dbConnectionPoolSize: Int = 10) {
      *  - If the topic does not exist, insert a new one.
      *  - If the topic exists, update the existing one.
      *
+     * @param conn The connection to be used to interact with the database.
      * @param topic The topic name.
      * @param message The message.
      * @param isLast Indicates if the message is the last one.
      * @return The event id.
      * @throws UnexpectedBrokerException If something unexpected happens.
      */
-    private fun getEventIdAndUpdateHistory(topic: String, message: String, isLast: Boolean): Long {
-        connectionPool.borrowObject().use { conn ->
-            val sync = conn.sync()
-            // sync.watch(topic)
-            sync.multi()
-            try {
-                sync.hsetnx(topic, "${EventProp.ID}", "-1")
-                sync.hincrby(topic, "${EventProp.ID}", 1)
-                sync.hmset(
-                    topic,
-                    hashMapOf("${EventProp.MESSAGE}" to message, "${EventProp.IS_LAST}" to isLast.toString())
-                )
-                val exec = sync.exec()
-                if (exec == null || exec.isEmpty) throw UnexpectedBrokerException() // throw BrokerOptimisticLockingException()
-                return exec[1]
-            } catch (e: Exception) {
-                sync.discard()
-                throw e
-            }
+    private fun getEventIdAndUpdateHistory(conn: Jedis, topic: String, message: String, isLast: Boolean): Long {
+        val transaction = conn.multi()
+        return try {
+            transaction.hsetnx(topic, "${EventProp.ID}", "-1")
+            transaction.hincrBy(topic, "${EventProp.ID}", 1)
+            transaction.hmset(
+                topic,
+                hashMapOf("${EventProp.MESSAGE}" to message, "${EventProp.IS_LAST}" to isLast.toString())
+            )
+            transaction.exec()
+                ?.getOrNull(1)
+                ?.toString()
+                ?.toLong()
+                ?: throw UnexpectedBrokerException()
+        } catch (e: Exception) {
+            transaction.discard()
+            throw e
         }
     }
 
@@ -238,9 +231,7 @@ class BrokerRedisPubSubLettuce(private val dbConnectionPoolSize: Int = 10) {
      */
     private fun getLastEvent(topic: String): Event? =
         retryExecutor.execute({ BrokerLostConnectionException() }, {
-            val lastEventProps = connectionPool.borrowObject().use { conn ->
-                conn.sync().hgetall(topic)
-            }
+            val lastEventProps = connectionPool.resource.use { conn -> conn.hgetAll(topic) }
             val id = lastEventProps["${EventProp.ID}"]?.toLong()
             val message = lastEventProps["${EventProp.MESSAGE}"]
             val isLast = lastEventProps["${EventProp.IS_LAST}"]?.toBoolean()
@@ -254,7 +245,7 @@ class BrokerRedisPubSubLettuce(private val dbConnectionPoolSize: Int = 10) {
     private companion object {
 
         // Logger instance for logging Broker class information.
-        private val logger = LoggerFactory.getLogger(BrokerRedisPubSubLettuce::class.java)
+        private val logger = LoggerFactory.getLogger(BrokerRedisJedisPubSub::class.java)
 
         // Minimum database connection pool size allowed.
         const val MIN_DB_CONNECTION_POOL_SIZE = 2
@@ -277,27 +268,15 @@ class BrokerRedisPubSubLettuce(private val dbConnectionPoolSize: Int = 10) {
         }
 
         /**
-         * Create a redis client for database interactions.
-         *
-         * @return The redis client instance.
-         */
-        private fun createRedisClient() =
-            RedisClient.create(RedisURI.create(Environment.getRedisHost(), Environment.getRedisPort()))
-
-        /**
          * Create a connection poll for database interactions.
          *
          * @param dbConnectionPoolSize The optional maximum size that the pool is allowed to reach.
-         * @param client The redis client instance.
-         * @return The connection poll represented by a GenericObjectPool instance.
+         * @return The connection poll represented by a JedisPool instance.
          */
-        private fun createConnectionPool(
-            dbConnectionPoolSize: Int,
-            client: RedisClient
-        ): GenericObjectPool<StatefulRedisConnection<String, String>> {
-            val pool = GenericObjectPoolConfig<StatefulRedisConnection<String, String>>()
-            pool.maxTotal = dbConnectionPoolSize
-            return ConnectionPoolSupport.createGenericObjectPool({ client.connect() }, pool)
+        private fun createConnectionPool(dbConnectionPoolSize: Int = 10): JedisPool {
+            val jedisPoolConfig = JedisPoolConfig()
+            jedisPoolConfig.maxTotal = dbConnectionPoolSize
+            return JedisPool(jedisPoolConfig, getRedisHost(), getRedisPort())
         }
 
         // ObjectMapper instance for serializing and deserializing JSON.
