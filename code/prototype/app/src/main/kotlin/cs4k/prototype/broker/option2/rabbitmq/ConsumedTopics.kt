@@ -107,6 +107,11 @@ class ConsumedTopics {
             ?: ConsumeInfo(channel = channel)
     }
 
+    /**
+     * Checks if the topic is being analyzed.
+     * @param topic Topic whose consumer is being analyzed.
+     * @return true if it is being currently analyzed, false if not or if the topic isn't being consumed.
+     */
     fun isBeingAnalyzed(topic: String) = lock.withLock {
         topicToConsumeInfo[topic]?.isBeingAnalyzed ?: false
     }
