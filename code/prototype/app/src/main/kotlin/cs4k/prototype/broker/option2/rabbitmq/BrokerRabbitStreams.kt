@@ -382,6 +382,7 @@ class BrokerRabbitStreams(
     fun shutdown() {
         if (isShutdown.compareAndSet(false, true)) {
             cleanExecutor.shutdown()
+            consumingChannelPool.getChannel().exchangeDelete(offsetExchange)
             consumingChannelPool.getChannel().queueDelete(brokerId)
             publishingChannelPool.close()
             consumingChannelPool.close()
@@ -409,7 +410,7 @@ class BrokerRabbitStreams(
             return factory
         }
 
-        // Addresses of all nodes inside of the cluster.
+        // Addresses of all nodes inside the cluster.
         private val clusterAddresses = listOf(
             "localhost:5672",
             "localhost:5673",
