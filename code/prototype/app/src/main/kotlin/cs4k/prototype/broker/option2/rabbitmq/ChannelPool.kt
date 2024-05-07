@@ -7,6 +7,7 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
+import org.slf4j.LoggerFactory
 import java.io.Closeable
 import java.io.IOException
 import java.util.concurrent.locks.ReentrantLock
@@ -174,5 +175,9 @@ class ChannelPool(
             connection.close()
             channels.clear()
         }
+    }
+
+    companion object {
+        private val logger = LoggerFactory.getLogger(ChannelPool::class.java)
     }
 }

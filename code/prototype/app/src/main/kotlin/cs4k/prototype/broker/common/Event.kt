@@ -12,5 +12,5 @@ data class Event(
     val topic: String,
     val id: Long,
     val message: String,
-    val isLast: Boolean = false
+    val isLast: Boolean = false,
 )

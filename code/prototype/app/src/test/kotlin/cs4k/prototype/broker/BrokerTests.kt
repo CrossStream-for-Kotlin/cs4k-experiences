@@ -2,12 +2,14 @@ package cs4k.prototype.broker
 
 import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.Event
-import cs4k.prototype.broker.option1.Broker
-import cs4k.prototype.broker.option2.redis.BrokerRedis
+
+import cs4k.prototype.broker.option2.rabbitmq.BrokerRabbitQueues
+import cs4k.prototype.broker.option2.rabbitmq.BrokerRabbitStreams
 import org.junit.jupiter.api.AfterAll
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.thread
 import kotlin.concurrent.withLock
@@ -44,6 +46,97 @@ class BrokerTests {
         }
     }
      */
+
+
+    @Test
+    fun `new broker instance receives events from existing topics`() {
+        // Arrange
+        val topic = newRandomTopic()
+        val message = "teste"
+
+        var eventReceived = ""
+        val latch = CountDownLatch(2)
+
+        val brokerInstance1 = BrokerRabbitQueues()
+        brokerInstance1.publish(topic, message)
+
+        // Espera um tempo para garantir que o evento seja pulicado
+        Thread.sleep(5000)
+
+        val brokerInstance2 = BrokerRabbitQueues()
+        brokerInstance2.subscribe(topic) { event ->
+            // Assert
+            if (event.topic == topic && event.message == message) {
+                eventReceived = message
+                latch.countDown()
+            }
+        }
+
+        // Act
+        latch.await(1000, TimeUnit.MILLISECONDS)
+
+        // Assert
+
+        assertEquals(eventReceived, message)
+    }
+
+
+    @Test
+    fun `new broker instance begginig in the middle of the exectution and asking for topics that are in the pass`() {
+        // Arrange
+
+        val brokerInstance1 = BrokerRabbitQueues()
+        var list = mutableListOf<String>()
+        var l2 = mutableListOf<String>()
+        (1..100).forEach {
+            val topic = newRandomTopic()
+            val message = newRandomMessage()
+            //ji want to add randomly picking a topic and adding to the list
+            list.add(topic)
+            l2.add(message)
+            brokerInstance1.publish(topic, message)
+            println(it)
+            if(it ==100){
+                println("Last topic $topic")
+            }
+        }
+
+
+        // Espera um tempo para garantir que o evento seja pulicado
+        Thread.sleep(10000)
+
+        val brokerInstance2 = BrokerRabbitQueues()
+        val eventReceived = AtomicBoolean(false)
+        val latch = CountDownLatch(list.size)
+        var l = mutableListOf<String>()
+        val lUnSubs = mutableListOf<() -> Unit>()
+        list.forEach { topic ->
+            val un = brokerInstance2.subscribe(topic) { event ->
+                // Assert
+                if (event.topic == topic) {
+                    l.add(event.message)
+                    eventReceived.set(true)
+                    latch.countDown()
+                }
+
+            }
+            lUnSubs.add(un)
+        }
+
+
+        latch.await()
+
+        assertTrue(latch.await(10000, TimeUnit.MILLISECONDS))
+        // Assert
+        lUnSubs.forEach { it() }
+        println("l2 =${l2.size}  l=${l.size}")
+        assertEquals(l.toSet().toList().size, l2.size)
+        l.toSet().toList().forEach {
+            assertTrue(l2.contains(it))
+        }
+        assertTrue(eventReceived.get())
+    }
+
 
     @Test
     fun `new subscriber in 1 topic should receive the last message`() {
@@ -480,6 +573,7 @@ class BrokerTests {
         assertTrue(reachedZero)
     }
 
+    //Não passa
     @Test
     fun `stress test with simultaneous publication of n messages to 1 topic with several broker instances involved`() {
         // Arrange
@@ -537,6 +631,65 @@ class BrokerTests {
         unsubscribes.forEach { unsubscribe -> unsubscribe() }
     }
 
+    //duplicete
+    @Test
+    fun `stress test with simultaneous publication of n messages to 1 topic with several broker instances involved duplicated`() {
+        // Arrange
+        val topic = newRandomTopic()
+        val nMessages = 2
+        val messages = List(nMessages) { newRandomMessage() }
+        val nSubs = 2
+        val latch = CountDownLatch(nMessages * nSubs)
+        val unsubscribes = mutableListOf<() -> Unit>()
+        val threads = ConcurrentLinkedQueue<Thread>()
+        val errors = ConcurrentLinkedQueue<Exception>()
+        val eventsReceived = ConcurrentLinkedQueue<Event>()
+
+        repeat(nSubs) {
+            val unsubscribe = getRandomBrokerInstance().subscribe(
+                topic = topic,
+                handler = { event ->
+                    eventsReceived.add(event)
+                    latch.countDown()
+                }
+            )
+            unsubscribes.add(unsubscribe)
+        }
+
+        // Act
+        messages.forEach { message ->
+            val th = Thread {
+                try {
+                    getRandomBrokerInstance().publish(
+                        topic = topic,
+                        message = message
+                    )
+                } catch (e: Exception) {
+                    errors.add(e)
+                }
+            }
+            th.start().also { threads.add(th) }
+        }
+        threads.forEach { it.join() }
+
+        // Assert
+        val reachedZero = latch.await(SUBSCRIBE_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
+        assertTrue(reachedZero)
+
+        assertEquals(nSubs * nMessages, eventsReceived.size)
+
+        val eventsReceivedSet = eventsReceived
+            .toSet()
+            .map { event -> event.message }
+        assertEquals(nMessages, eventsReceivedSet.size)
+        assertTrue(eventsReceivedSet.containsAll(messages))
+
+        if (errors.isNotEmpty()) throw errors.peek()
+
+        // Clean Up
+        unsubscribes.forEach { unsubscribe -> unsubscribe() }
+    }
+    //Não passa
     @Test
     fun `stress test with simultaneous publication of n messages to n topics with several broker instances involved`() {
         // Arrange
@@ -864,6 +1017,7 @@ class BrokerTests {
         if (errors.isNotEmpty()) throw errors.peek()
     }
 
+    //Este falha rebenta me com o pc
     @Test
     fun `consecutive subscription and unSubscriptions while periodic publication of a message and verify that all events are received in the correct order`() {
         // Arrange
@@ -917,6 +1071,7 @@ class BrokerTests {
         assertEquals(messages.toList(), events.map { it.message }.toSet().toList())
     }
 
+    //Este tambem falha
     @Test
     fun `stress test with simultaneous subscription and unSubscriptions while periodic publication of a message and verify that all events are received in the correct order`() {
         // Arrange
@@ -989,6 +1144,7 @@ class BrokerTests {
         if (errors.isNotEmpty()) throw errors.peek()
     }
 
+    //Este tambem falha
     @Test
     fun `stress test with simultaneous subscription and unSubscriptions while periodic publication of a message in multiple topics and verify that all events are received in the correct order`() {
         // Arrange
@@ -1014,6 +1170,7 @@ class BrokerTests {
                                 message = it
                             )
                         }
+
                     Thread.sleep(PUBLISHER_DELAY_MILLIS)
                 }
             }
@@ -1121,10 +1278,12 @@ class BrokerTests {
             // Broker()
 
         // - Redis
-        BrokerRedis()
+       // BrokerRedis()
 
-        // - RabbitMQ
+            // - RabbitMQ
+            BrokerRabbitQueues()
         // BrokerRabbitStreams()
+
 
         private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { createBrokerInstance() }
 

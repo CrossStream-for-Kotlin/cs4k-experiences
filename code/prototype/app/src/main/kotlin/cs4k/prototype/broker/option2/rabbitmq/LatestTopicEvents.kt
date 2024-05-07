@@ -6,7 +6,7 @@ import kotlin.concurrent.withLock
 import kotlin.math.max
 
 /**
- * Container associating all topics with their respective consumers.
+ * Container associating all topics with their latest events.
  */
 class LatestTopicEvents {
 
@@ -50,7 +50,7 @@ class LatestTopicEvents {
         }
     }
 
-    // Map that associates topics with consumers
+    // Map that associates topics with their latest events.
     private val map = HashMap<String, LatestEvents>()
 
     // Lock to ensure thread safety.

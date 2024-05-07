@@ -3,20 +3,24 @@ package cs4k.prototype.broker.option2.rabbitmq
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.rabbitmq.client.AMQP
+import com.rabbitmq.client.Channel
 import com.rabbitmq.client.ConnectionFactory
 import com.rabbitmq.client.DefaultConsumer
 import com.rabbitmq.client.Envelope
-import cs4k.prototype.broker.BrokerException.BrokerDbLostConnectionException
-import cs4k.prototype.broker.BrokerException.BrokerTurnOffException
-import com.rabbitmq.client.Channel
+import cs4k.prototype.broker.common.BrokerException.*
+import cs4k.prototype.broker.common.AssociatedSubscribers
+import cs4k.prototype.broker.common.Event
+import cs4k.prototype.broker.common.RetryExecutor
+import cs4k.prototype.broker.common.Subscriber
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import org.slf4j.LoggerFactory
-import org.springframework.stereotype.Component
 //import org.springframework.stereotype.Component
 import java.io.IOException
 import java.util.*
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.Continuation
+import kotlin.time.Duration.Companion.milliseconds
 
 // @Component
 class BrokerRabbitQueues {
@@ -27,59 +31,68 @@ class BrokerRabbitQueues {
     // Retry executor.
     private val retryExecutor = RetryExecutor()
 
+    /**
+     * Cria um evento especial para solicitar o último evento de um tópico específico a outro broker.
+     *
+     * @param message A mensagem para o evento de solicitação.
+     * @return Um evento configurado como pedido de último evento.
+     */
+    private fun createRequestEvent(topic: String): Event {
+        return Event(topic, -1, "Request Latest Event", false)
+    }
+
     // Name of exchange used to publish messages to.
     private val broadCastExchange = "cs4k-notifications"
+
+    //Indetify Broker instace
+    private val brokerNumber = UUID.randomUUID().toString()
 
     // Consumer tag identifying the broker as consumer.
     private val consumerTag = "cs4k-broker:" + UUID.randomUUID().toString()
 
 
-    // Connection and channel used for notifications.
-    private val acceptingConnection = connectionFactory.newConnection()
 
-    //Channel pool and channel used
-    private val channelPool = ChannelPool(acceptingConnection)
-    private val acceptingChannel = channelPool.getChannel()
 
-    // Concurrent queue to store the channels that are being used.
-    private val usingChannels = ConcurrentLinkedQueue<Channel>()
+    // Channel pool
+    private val consumerChannelPool = ChannelPool(connectionFactory.newConnection())
+    private val publisherChannelPool = ChannelPool(connectionFactory.newConnection())
+
+
 
     // Storage of most recent events sent by other brokers and set by this broker.
     private val latestTopicEvents = LatestTopicEvents()
 
     // Retry condition.
     private val retryCondition: (throwable: Throwable) -> Boolean = { throwable ->
-        !(throwable is IOException && !acceptingChannel.isOpen)
+        !(throwable is IOException && (consumerChannelPool.isClosed || consumerChannelPool.isClosed))
     }
 
-
-
-    private val consumer = object : DefaultConsumer(acceptingChannel) {
-
-        /**
-         * Registers the event as the latest received and sends it to all subscribers.
-         */
-        private fun processMessage(event: Event, toResend: Boolean = false) {
-            latestTopicEvents.setLatestReceivedEvent(event.topic, event)
-            associatedSubscribers
-                .getAll(event.topic)
-                .forEach { subscriber ->
-                    if (subscriber.lastEventId < event.id) {
-                        associatedSubscribers.updateLastEventListened(subscriber.id, event.topic, event.id)
-                        subscriber.handler(event)
-                    }
+    /**
+     * Registers the event as the latest received and sends it to all subscribers.
+     */
+    private fun processMessage(event: Event, toResend: Boolean = false) {
+        latestTopicEvents.setLatestReceivedEvent(event.topic, event)
+        associatedSubscribers
+            .getAll(event.topic)
+            .forEach { subscriber ->
+                if (subscriber.lastEventId < event.id) {
+                    associatedSubscribers.updateLastEventListened(subscriber.id, event.topic, event.id)
+                    subscriber.handler(event)
                 }
-            if (toResend) {
-                notify(event)
             }
+        if (toResend) {
+            notify(event)
         }
+    }
 
-        /**
-         * Checks if there is an id conflict between two different events.
-         */
-        private fun thereIsIdConflict(latestEvent: Event, event: Event) =
-            latestEvent.id == event.id &&
-                    (latestEvent.message != event.message && latestEvent.isLast != event.isLast)
+    /**
+     * Checks if there is an id conflict between two different events.
+     */
+    private fun thereIsIdConflict(latestEvent: Event, event: Event) =
+        latestEvent.id == event.id &&
+                (latestEvent.message != event.message )
+
+    private inner class ConsumerHandler(channel: Channel) : DefaultConsumer(channel) {
 
         override fun handleDelivery(
             consumerTag: String?,
@@ -92,16 +105,41 @@ class BrokerRabbitQueues {
             val deliveryTag = envelope.deliveryTag
             val event = deserialize(String(body))
             val latestEvent = latestTopicEvents.getLatestReceivedEvent(event.topic)
-            when {
-                latestEvent == null || latestEvent.id < event.id -> {
-                    logger.info("new event received {}", event)
-                    processMessage(event)
+            if (event.message == "Request Latest Event") {
+                logger.info(
+                    "Request Latest Event received to routinkg key {}  in the consumertag {} and exchange {}",
+                    envelope.routingKey,
+                    consumerTag,
+                    envelope.exchange
+                )
+                if (latestEvent != null){
+                    channel.basicPublish(
+                        broadCastExchange, latestEvent.topic,
+                        null,
+                        serialize(latestEvent).toByteArray()
+                    )
+                    channel.basicAck(deliveryTag, false)
                 }
+                return
+            }
 
-                thereIsIdConflict(latestEvent, event) -> {
+            logger.info(
+                "event received message {} with id {} in broker {} ",
+                event.message,
+                event.id,
+                brokerNumber
+            )
+            when {
+
+                latestEvent != null && thereIsIdConflict(latestEvent, event) -> {
                     val recentEvent = event.copy(id = event.id + 1)
                     logger.info("same event received with different id, latest updated {}", recentEvent)
                     processMessage(recentEvent, true)
+                }
+
+                latestEvent == null || latestEvent.id < event.id -> {
+                    logger.info("new event received {}", event)
+                    processMessage(event)
                 }
 
                 latestEvent == event -> {
@@ -112,7 +150,7 @@ class BrokerRabbitQueues {
                     logger.info("older event received, thrown away")
                 }
             }
-            acceptingChannel.basicAck(deliveryTag, false)
+            channel.basicAck(deliveryTag, false)
         }
     }
 
@@ -137,12 +175,19 @@ class BrokerRabbitQueues {
 
         val subscriber = Subscriber(UUID.randomUUID(), handler)
         associatedSubscribers.addToKey(topic, subscriber)
-        logger.info("new subscriber topic '{}' id '{}", topic, subscriber.id)
-
-        getLastEvent(topic)?.let { event -> handler(event) }
+        logger.info("new subscriber topic '{}' id '{} in broker {}", topic, subscriber.id, brokerNumber)
+        val handler = getLastEvent(topic)
+        if (handler != null) {
+            subscriber.handler(handler)
+        } else {
+             //requestLatestEvent(topic)
+        }
 
         return { unsubscribe(topic, subscriber) }
     }
+
+
+    
 
     private fun getLastEvent(topic: String): Event? {
         val event = latestTopicEvents.getLatestEvent(topic)
@@ -161,6 +206,7 @@ class BrokerRabbitQueues {
      */
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
         if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
+        logger.info("publishing message to topic '{} with message {} in broker {}'", topic, message, brokerNumber)
         notify(topic, message, isLastMessage)
     }
 
@@ -171,14 +217,27 @@ class BrokerRabbitQueues {
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     fun shutdown() {
+        logger.info("Shutting down broker")
         if (isShutdown.compareAndSet(false, true)) {
-            unListen()
-            acceptingChannel.close()
-            acceptingConnection.close()
+            consumerChannelPool.close()
+            publisherChannelPool.close()
         } else {
             throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
         }
     }
+
+    private fun requestLatestEvent(topic: String) {
+        val requestEvent = Event(topic, -1, "Request Latest Event", false)
+        val responseChannel = consumerChannelPool.getChannel()
+        responseChannel.confirmSelect()
+        //val qName = responseChannel.queueDeclare().queue
+        responseChannel.basicPublish(broadCastExchange, "", null, serialize(requestEvent).toByteArray())
+        //responseChannel.basicConsume(qName, true, consumerTag, ConsumerHandler(responseChannel))
+        responseChannel.waitForConfirms()
+        //responseChannel.queueDelete(qName)
+        consumerChannelPool.stopUsingChannel(responseChannel)
+    }
+
 
     /**
      * Unsubscribe from a topic.
@@ -195,22 +254,29 @@ class BrokerRabbitQueues {
      * Listen for notifications.
      */
     private fun listen() {
-        acceptingChannel.exchangeDeclare(broadCastExchange, "fanout", true)
-        acceptingChannel.queueDeclare(
-            consumerTag,
-            true,
-            false,
-            false,
-            mapOf("x-max-length" to 100_000, "x-queue-type" to "quorum")
-        )
-        acceptingChannel.queueBind(consumerTag, broadCastExchange, "")
-        acceptingChannel.basicConsume(consumerTag, false, consumerTag, consumer)
+        retryExecutor.execute({ BrokerLostConnectionException() }, {
+            val channel = consumerChannelPool.getChannel()
+            channel.exchangeDeclare(broadCastExchange, "fanout")
+            channel.queueDeclare(
+                consumerTag,
+                true,
+                false,
+                false,
+                mapOf("x-max-length" to 100_000, "x-queue-type" to "quorum")
+            )
+            logger.info("queue declared with tag {}", consumerTag)
+            channel.queueBind(consumerTag, broadCastExchange, "")
+            channel.basicConsume(consumerTag, false, consumerTag, ConsumerHandler(channel))
+            consumerChannelPool.registerConsuming(channel, consumerTag)
+        }, retryCondition)
     }
 
     /**
      * UnListen for notifications.
      */
-    private fun unListen() = acceptingChannel.basicCancel(consumerTag)
+    private fun unListen() {
+        consumerChannelPool.close()
+    }
 
     /**
      * Notify the topic with the message.
@@ -221,13 +287,16 @@ class BrokerRabbitQueues {
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     private fun notify(topic: String, message: String, isLastMessage: Boolean) {
-        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
-            val channel = channelPool.getChannel()
+        retryExecutor.execute(exception = { BrokerLostConnectionException() }, action = {
+            val channel = publisherChannelPool.getChannel()
+            channel.confirmSelect()
             val id = latestTopicEvents.getNextEventId(topic)
             val event = Event(topic, id, message, isLastMessage)
             latestTopicEvents.setLatestSentEvent(topic, event)
             channel.basicPublish(broadCastExchange, topic, null, serialize(event).toByteArray())
-            usingChannels.add(channel)
+            logger.info("Message successfully published to topic: $topic with message: $message")
+            channel.waitForConfirms()
+            publisherChannelPool.stopUsingChannel(channel)
         }, retryCondition)
     }
 
@@ -238,11 +307,13 @@ class BrokerRabbitQueues {
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     private fun notify(event: Event) {
-        retryExecutor.execute({ BrokerDbLostConnectionException() }, {
-            val channel = channelPool.getChannel()
+        retryExecutor.execute({ BrokerLostConnectionException() }, {
+            val channel = publisherChannelPool.getChannel()
+            channel.confirmSelect()
             latestTopicEvents.setLatestSentEvent(event.topic, event)
             channel.basicPublish(broadCastExchange, event.topic, null, serialize(event).toByteArray())
-            usingChannels.add(channel)
+            channel.waitForConfirms()
+            publisherChannelPool.stopUsingChannel(channel)
         }, retryCondition)
     }
 
@@ -251,7 +322,10 @@ class BrokerRabbitQueues {
         private val logger = LoggerFactory.getLogger(BrokerRabbitQueues::class.java)
 
         // Connection factory used to make connections to message broker.
-        private val connectionFactory = ConnectionFactory()
+        private val connectionFactory = ConnectionFactory().apply {
+            username = "user"
+            password = "password"
+        }
 
         // ObjectMapper instance for serializing and deserializing JSON.
         private val objectMapper = ObjectMapper().registerModules(KotlinModule.Builder().build())
@@ -274,90 +348,3 @@ class BrokerRabbitQueues {
     }
 }
 
-
-
-/**
-//generate all consumers tags for the broker
-//private val consumerTags: MutableList<String> = mutableListOf("$consumerTag-1","$consumerTag-2","$consumerTag-3")
-/*
-    /**
-     * Listen for notifications with multiple consumer threads.
-     */
-    private fun listenWithMultipleConsumers(consumerTags: List<String> ,consumerCount: Int = 3) {
-
-        /**
-         * Registers the event as the latest received and sends it to all subscribers.
-         */
-        fun processMessage2(event: Event) {
-            latestTopicEvents.setLatestReceivedEvent(event.topic, event)
-            associatedSubscribers
-                .getAll(event.topic)
-                .forEach { subscriber ->
-                    if (subscriber.lastEventNotified < event.id) {
-                        associatedSubscribers.updateLastEventListened(subscriber.id, event.topic, event.id)
-                        subscriber.handler(event)
-                    }
-                }
-            notify(event)
-        }
-
-        /**
-         * Checks if there is an id conflict between two different events.
-         */
-        fun thereIsIdConflict(latestEvent: Event, event: Event) =
-            latestEvent.id == event.id &&
-                    (latestEvent.message != event.message && latestEvent.isLast != event.isLast)
-
-
-        for (i in 1..consumerCount) {
-            val channel = acceptingChannel
-            val consumerTag = consumerTags[i-1]
-            channel.queueDeclare(
-                consumerTag,
-                true,
-                false,
-                false,
-                mapOf("x-max-length" to 100_000, "x-queue-type" to "quorum")
-            )
-
-            channel.queueBind(consumerTag, broadCastExchange, "")
-            val consumer = object : DefaultConsumer(channel) {
-                override fun handleDelivery(
-                    consumerTag: String?,
-                    envelope: Envelope?,
-                    properties: AMQP.BasicProperties?,
-                    body: ByteArray?
-                ) {
-                    requireNotNull(envelope)
-                    requireNotNull(body)
-                    val deliveryTag = envelope.deliveryTag
-                    val event = deserialize(String(body))
-
-                    val latestEvent = latestTopicEvents.getLatestReceivedEvent(event.topic)
-                    when {
-                        latestEvent == null || latestEvent.id < event.id -> {
-                            logger.info("new event received {}", event)
-                            processMessage2(event)
-                        }
-
-                        thereIsIdConflict(latestEvent, event) -> {
-                            val recentEvent = event.copy(id = event.id + 1)
-                            logger.info("same event received with different id, latest updated {}", recentEvent)
-                            processMessage2(recentEvent)
-                        }
-
-                        latestEvent == event -> {
-                            logger.info("InstanceId=${brokerNumber} same event received, thrown away")
-                        }
-
-                        latestEvent.id > event.id -> {
-                            logger.info("older event received, thrown away")
-                        }
-                    }
-                    channel.basicAck(deliveryTag, false)
-                }
-            }
-            channel.basicConsume(consumerTag, false, consumerTag, consumer)
-        }
-    }
-        **/
