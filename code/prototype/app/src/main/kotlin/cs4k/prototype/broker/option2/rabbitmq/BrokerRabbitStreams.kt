@@ -267,14 +267,20 @@ class BrokerRabbitStreams(
      * @param subscriber The subscriber who unsubscribed.
      */
     private fun unsubscribe(topic: String, subscriber: Subscriber) {
+        val topicLock = consumedTopics.getLock(topic)
         associatedSubscribers.removeIf(
             topic,
             { sub: Subscriber -> sub.id.toString() == subscriber.id.toString() },
             {
                 if (consumedTopics.markForAnalysis(topic)) {
                     cleanExecutor.schedule({
-                        unListen(topic)
-                        consumedTopics.stopAnalysis(topic)
+                        try {
+                            topicLock?.lock()
+                            unListen(topic)
+                            consumedTopics.stopAnalysis(topic)
+                        } finally {
+                            topicLock?.unlock()
+                        }
                     }, withholdTimeInMillis, TimeUnit.MILLISECONDS)
                 }
             }
@@ -300,25 +306,31 @@ class BrokerRabbitStreams(
      * Listen for notifications.
      */
     private fun listen(topic: String) {
-        if (consumedTopics.isTopicBeingConsumed(topic) || consumedTopics.isBeingAnalyzed(topic)) return
-        val offset = consumedTopics.getOffset(topic, subscribeDelay) { fetchOffset(topic) } ?: "first"
-        retryExecutor.execute({ BrokerLostConnectionException() }, {
-            val consumingChannel = consumingChannelPool.getChannel()
-            consumedTopics.setChannel(topic, consumingChannel)
-            consumingChannel.basicQos(100)
-            val consumerTag = consumingChannel.basicConsume(
-                streamName,
-                false,
-                mapOf(
-                    "x-stream-offset" to offset,
-                    "x-stream-filter" to topic
-                ),
-                BrokerConsumer(topic, consumingChannel)
-            )
-            consumingChannelPool.registerConsuming(consumingChannel, consumerTag)
-            consumingChannel.queueBind(brokerId, offsetExchange, topic)
-            logger.info("new consumer -> {}", topic)
-        }, retryCondition)
+        val topicLock = consumedTopics.getLock(topic)
+        try {
+            topicLock?.lock()
+            if (consumedTopics.isTopicBeingConsumed(topic) || consumedTopics.isBeingAnalyzed(topic)) return
+            val offset = consumedTopics.getOffset(topic, subscribeDelay) { fetchOffset(topic) } ?: "first"
+            retryExecutor.execute({ BrokerLostConnectionException() }, {
+                val consumingChannel = consumingChannelPool.getChannel()
+                consumedTopics.setChannel(topic, consumingChannel)
+                consumingChannel.basicQos(100)
+                val consumerTag = consumingChannel.basicConsume(
+                    streamName,
+                    false,
+                    mapOf(
+                        "x-stream-offset" to offset,
+                        "x-stream-filter" to topic
+                    ),
+                    BrokerConsumer(topic, consumingChannel)
+                )
+                consumingChannelPool.registerConsuming(consumingChannel, consumerTag)
+                consumingChannel.queueBind(brokerId, offsetExchange, topic)
+                logger.info("new consumer -> {}", topic)
+            }, retryCondition)
+        } finally {
+            topicLock?.unlock()
+        }
     }
 
     /**

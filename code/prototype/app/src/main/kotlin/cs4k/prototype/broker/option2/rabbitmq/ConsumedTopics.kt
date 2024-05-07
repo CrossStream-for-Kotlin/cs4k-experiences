@@ -7,6 +7,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
+import java.util.concurrent.locks.Lock
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlin.coroutines.Continuation
@@ -50,12 +51,14 @@ class ConsumedTopics {
      * @param lastOffset The offset related to the last event of the topic.
      * @param latestEvent The latest event read by the broker.
      * @param isBeingAnalyzed If the consumption of the topic is being analyzed for eventual cancelling.
+     * @param lock Lock to control concurrent access to its consumption.
      */
     private data class ConsumeInfo(
         val channel: Channel? = null,
         val lastOffset: Long? = null,
         val latestEvent: EventInfo? = null,
-        val isBeingAnalyzed: Boolean = false
+        val isBeingAnalyzed: Boolean = false,
+        val lock: Lock = ReentrantLock()
     )
 
     // Linking the topic to its consumption.
@@ -78,6 +81,15 @@ class ConsumedTopics {
 
     // All requests.
     private val offsetRequestList = mutableListOf<OffsetRequest>()
+
+    /**
+     * Obtain a lock to control concurrently access to consumption of a topic.
+     * @param topic Topic that is being consumed.
+     * @returns The lock to control concurrent access.
+     */
+    fun getLock(topic: String): Lock? = lock.withLock {
+        topicToConsumeInfo[topic]?.lock
+    }
 
     /**
      * Checks if the topic is being consumed.
