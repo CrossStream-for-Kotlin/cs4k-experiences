@@ -224,8 +224,7 @@ class BrokerRabbitStreams(
                     "x-queue-type" to "quorum"
                 )
             )
-            channel.exchangeDeclare(offsetExchange, "fanout")
-            channel.queueBind(brokerId, offsetExchange, "")
+            channel.exchangeDeclare(offsetExchange, "direct")
             val consumerTag = channel.basicConsume(brokerId, OffsetShareHandler(channel))
             consumingChannelPool.registerConsuming(channel, consumerTag)
         }, retryCondition)
@@ -317,6 +316,7 @@ class BrokerRabbitStreams(
                 BrokerConsumer(topic, consumingChannel)
             )
             consumingChannelPool.registerConsuming(consumingChannel, consumerTag)
+            consumingChannel.queueBind(brokerId, offsetExchange, topic)
             logger.info("new consumer -> {}", topic)
         }, retryCondition)
     }
@@ -340,6 +340,7 @@ class BrokerRabbitStreams(
             logger.info("consumer for topic {} closing", topic)
             consumedTopics.getChannel(topic)?.let { channel ->
                 retryExecutor.execute({ BrokerLostConnectionException() }, {
+                    channel.queueUnbind(brokerId, offsetExchange, topic)
                     consumingChannelPool.stopUsingChannel(channel)
                 }, retryCondition)
             }
