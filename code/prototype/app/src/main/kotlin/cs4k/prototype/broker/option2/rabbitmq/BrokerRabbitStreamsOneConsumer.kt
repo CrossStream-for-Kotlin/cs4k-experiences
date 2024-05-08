@@ -60,7 +60,7 @@ class BrokerRabbitStreamsOneConsumer {
                 .getAll(topic)
                 .forEach { subscriber ->
                     if (subscriber.lastEventId < eventToNotify.id) {
-                        associatedSubscribers.updateLastEventListened(subscriber.id, topic, eventToNotify.id)
+                        associatedSubscribers.updateLastEventIdListened(subscriber.id, topic, eventToNotify.id)
                         subscriber.handler(eventToNotify)
                     }
                 }
@@ -144,7 +144,7 @@ class BrokerRabbitStreamsOneConsumer {
         logger.info("new subscriber topic '{}' id '{}", topic, subscriber.id)
         getLastEvent(topic)?.let { event ->
             if (subscriber.lastEventId < event.id) {
-                associatedSubscribers.updateLastEventListened(subscriber.id, topic, event.id)
+                associatedSubscribers.updateLastEventIdListened(subscriber.id, topic, event.id)
                 handler(event)
             }
         }
