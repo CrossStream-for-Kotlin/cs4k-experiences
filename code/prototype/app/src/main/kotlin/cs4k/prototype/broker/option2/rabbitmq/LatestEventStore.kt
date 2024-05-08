@@ -32,7 +32,7 @@ class LatestEventStore {
      * @param isLast If the event in question is the last of a given topic.
      * @return The newly created event.
      */
-    fun createAndSetLatestEvent(topic: String, message: String, isLast: Boolean) = lock.withLock {
+    fun createAndSetLatestEvent(topic: String, message: String, isLast: Boolean = false) = lock.withLock {
         val id = map[topic]?.id?.plus(1L) ?: 0L
         val recentEvent = Event(topic, id, message, isLast)
         map[topic] = recentEvent
