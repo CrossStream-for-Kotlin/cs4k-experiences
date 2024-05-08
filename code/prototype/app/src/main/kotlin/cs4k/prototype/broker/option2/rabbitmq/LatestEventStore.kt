@@ -40,10 +40,7 @@ class LatestEventStore {
     }
 
     /**
-     * Removes the event of a given topic.
-     * @param topic The topic of the event being deleted.
+     * Removes all stored events.
      */
-    fun removeLatestEvent(topic: String) = lock.withLock {
-        map.remove(topic)
-    }
+    fun removeAll() = lock.withLock { map.clear() }
 }

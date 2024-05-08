@@ -25,6 +25,9 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 // @Component
+/**
+ * Deprecated: Many topics implies many different channels, which imply too many channel pools open at once.
+ */
 class BrokerRabbitStreams(
     private val subscribeDelay: Duration = 250.milliseconds,
     private val withholdTimeInMillis: Long = 5000
