@@ -9,8 +9,8 @@ import org.slf4j.LoggerFactory
  * @param waitTimeMillis The time to wait between retries.
  */
 class RetryExecutor(
-    private val maxRetries: Int = 3,
-    private val waitTimeMillis: Long = 1000
+    private val maxRetries: Int = DEFAULT_MAX_RETRIES,
+    private val waitTimeMillis: Long = DEFAULT_WAIT_TIME_MILLIS
 ) {
 
     /**
@@ -73,12 +73,17 @@ class RetryExecutor(
         } else {
             logger.error("... not retrying ...")
             throw exception
-            // return
         }
     }
 
     private companion object {
         // Logger instance for logging Executor class error.
         private val logger = LoggerFactory.getLogger(RetryExecutor::class.java)
+
+        // Default maximum number of retries.
+        private const val DEFAULT_MAX_RETRIES = 3
+
+        // Default time to wait between retries.
+        private const val DEFAULT_WAIT_TIME_MILLIS = 1000L
     }
 }

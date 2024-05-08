@@ -23,9 +23,7 @@ object Environment {
      * @throws EnvironmentVariableException If the environment variable for the PostgreSQL database URL is missing.
      */
     fun getPostgreSQLDbUrl() = System.getenv(KEY_POSTGRESQL_DB_URL)
-        ?: throw EnvironmentVariableException(
-            "Missing environment variable $KEY_POSTGRESQL_DB_URL."
-        )
+        ?: throw EnvironmentVariableException("Missing environment variable $KEY_POSTGRESQL_DB_URL.")
 
     /**
      * Get the Redis host from the environment variable [KEY_REDIS_HOST].

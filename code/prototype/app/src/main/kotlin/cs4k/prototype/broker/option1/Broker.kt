@@ -1,7 +1,5 @@
 package cs4k.prototype.broker.option1
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import cs4k.prototype.broker.common.AssociatedSubscribers
@@ -13,6 +11,7 @@ import cs4k.prototype.broker.common.BrokerException.UnexpectedBrokerException
 import cs4k.prototype.broker.common.Environment
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
+import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.Subscriber
 import cs4k.prototype.broker.option1.ChannelCommandOperation.Listen
 import cs4k.prototype.broker.option1.ChannelCommandOperation.UnListen
@@ -25,13 +24,16 @@ import kotlin.concurrent.thread
 
 // @Component
 class Broker(
-    private val dbConnectionPoolSize: Int = 10
+    private val dbConnectionPoolSize: Int = DEFAULT_DB_CONNECTION_POOL_SIZE
 ) {
 
     init {
         // Check database connection pool size.
         checkDbConnectionPoolSize(dbConnectionPoolSize)
     }
+
+    // Shutdown state.
+    private var isShutdown = false
 
     // Channel to listen for notifications.
     private val channel = "share_channel"
@@ -52,17 +54,15 @@ class Broker(
         !(throwable is SQLException && connectionPool.isClosed)
     }
 
-    private var isShutdown = false
-
     init {
         // Create the events table if it does not exist.
         createEventsTable()
 
-        // Start a new thread to listen for notifications.
+        // Start a new thread to ...
         thread {
-            // Listen for notifications.
+            // ... listen for notifications and ...
             listen()
-            // Wait for notifications.
+            // ... wait for notifications.
             waitForNotification()
         }
     }
@@ -77,7 +77,7 @@ class Broker(
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
-        if (isShutdown || connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
+        if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
 
         val subscriber = Subscriber(UUID.randomUUID(), handler)
         associatedSubscribers.addToKey(topic, subscriber)
@@ -98,7 +98,7 @@ class Broker(
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
-        if (isShutdown || connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::publish.name}.")
+        if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::publish.name}.")
 
         notify(topic, message, isLastMessage)
     }
@@ -111,6 +111,7 @@ class Broker(
      */
     fun shutdown() {
         if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
+
         isShutdown = true
         unListen()
         connectionPool.close()
@@ -149,7 +150,7 @@ class Broker(
                                 notification.parameter,
                                 pgConnection.backendPID
                             )
-                            val event = deserialize(notification.parameter)
+                            val event = BrokerSerializer.deserializeEventFromJson(notification.parameter)
                             associatedSubscribers
                                 .getAll(event.topic)
                                 .forEach { subscriber -> subscriber.handler(event) }
@@ -209,7 +210,7 @@ class Broker(
 
                     conn.prepareStatement("select pg_notify(?, ?)").use { stm ->
                         stm.setString(1, channel)
-                        stm.setString(2, serialize(event))
+                        stm.setString(2, BrokerSerializer.serializeEventToJson(event))
                         stm.execute()
                     }
 
@@ -310,6 +311,9 @@ class Broker(
         // Logger instance for logging Broker class information.
         private val logger = LoggerFactory.getLogger(Broker::class.java)
 
+        // Default database connection pool size.
+        const val DEFAULT_DB_CONNECTION_POOL_SIZE = 10
+
         // Minimum database connection pool size allowed.
         const val MIN_DB_CONNECTION_POOL_SIZE = 2
 
@@ -343,24 +347,5 @@ class Broker(
             hikariConfig.maximumPoolSize = dbConnectionPoolSize
             return HikariDataSource(hikariConfig)
         }
-
-        // ObjectMapper instance for serializing and deserializing JSON.
-        private val objectMapper = ObjectMapper().registerModules(KotlinModule.Builder().build())
-
-        /**
-         * Serialize an event to JSON string.
-         *
-         * @param event The event to serialize.
-         * @return The resulting JSON string.
-         */
-        private fun serialize(event: Event) = objectMapper.writeValueAsString(event)
-
-        /**
-         * Deserialize a JSON string to event.
-         *
-         * @param payload The JSON string to deserialize.
-         * @return The resulting event.
-         */
-        private fun deserialize(payload: String) = objectMapper.readValue(payload, Event::class.java)
     }
 }

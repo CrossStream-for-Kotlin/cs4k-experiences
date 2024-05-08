@@ -12,15 +12,11 @@ import cs4k.prototype.broker.common.AssociatedSubscribers
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
 import cs4k.prototype.broker.common.Subscriber
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeoutOrNull
 import org.slf4j.LoggerFactory
 //import org.springframework.stereotype.Component
 import java.io.IOException
 import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.coroutines.Continuation
-import kotlin.time.Duration.Companion.milliseconds
 
 // @Component
 class BrokerRabbitQueues {
@@ -76,7 +72,7 @@ class BrokerRabbitQueues {
             .getAll(event.topic)
             .forEach { subscriber ->
                 if (subscriber.lastEventId < event.id) {
-                    associatedSubscribers.updateLastEventListened(subscriber.id, event.topic, event.id)
+                    associatedSubscribers.updateLastEventIdListened(subscriber.id, event.topic, event.id)
                     subscriber.handler(event)
                 }
             }
