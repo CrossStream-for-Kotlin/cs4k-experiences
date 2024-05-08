@@ -7,6 +7,9 @@ class EnvironmentTests {
 
     @Test
     fun `get postgreSQL database url`() {
+        // Arrange
+        // Act
+        // Assert
         assertDoesNotThrow {
             Environment.getPostgreSQLDbUrl()
         }
@@ -14,6 +17,9 @@ class EnvironmentTests {
 
     @Test
     fun `get redis host`() {
+        // Arrange
+        // Act
+        // Assert
         assertDoesNotThrow {
             Environment.getRedisHost()
         }
@@ -21,6 +27,9 @@ class EnvironmentTests {
 
     @Test
     fun `get redis port`() {
+        // Arrange
+        // Act
+        // Assert
         assertDoesNotThrow {
             Environment.getRedisPort()
         }

@@ -8,10 +8,10 @@ import cs4k.prototype.broker.common.BrokerException.BrokerLostConnectionExceptio
 import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.BrokerException.ConnectionPoolSizeException
 import cs4k.prototype.broker.common.BrokerException.UnexpectedBrokerException
+import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.Environment
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
-import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.Subscriber
 import cs4k.prototype.broker.option1.ChannelCommandOperation.Listen
 import cs4k.prototype.broker.option1.ChannelCommandOperation.UnListen
