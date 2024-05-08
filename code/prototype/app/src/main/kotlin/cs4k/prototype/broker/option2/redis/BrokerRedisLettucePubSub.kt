@@ -1,18 +1,18 @@
 package cs4k.prototype.broker.option2.redis
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import cs4k.prototype.broker.common.AssociatedSubscribers
 import cs4k.prototype.broker.common.BrokerException
 import cs4k.prototype.broker.common.BrokerException.BrokerLostConnectionException
 import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.BrokerException.ConnectionPoolSizeException
 import cs4k.prototype.broker.common.BrokerException.UnexpectedBrokerException
+import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.Environment
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
 import cs4k.prototype.broker.common.Subscriber
 import io.lettuce.core.RedisClient
+import io.lettuce.core.RedisException
 import io.lettuce.core.RedisURI
 import io.lettuce.core.ScriptOutputType
 import io.lettuce.core.api.StatefulRedisConnection
@@ -29,9 +29,8 @@ import java.util.UUID
 // - Redis [Cluster] Pub/Sub using Redis as an in-memory data structure (key-value (hash) pair)
 
 // @Component
-class BrokerRedis(
-    private val dbConnectionPoolSize: Int = 10,
-    private val clusterMode: Boolean = false
+class BrokerRedisLettucePubSub(
+    private val dbConnectionPoolSize: Int = DEFAULT_DB_CONNECTION_POOL_SIZE
 ) {
 
     init {
@@ -50,8 +49,8 @@ class BrokerRedis(
 
     // Redis client.
     private val redisClient = retryExecutor.execute({ BrokerException.BrokerConnectionException() }, {
-        createRedisClient()
-        // createRedisClusterClient()
+        // createRedisClient()
+        createRedisClusterClient()
     })
 
     // Connection to asynchronous subscribe, unsubscribe and publish.
@@ -61,12 +60,14 @@ class BrokerRedis(
 
     // Connection pool.
     private val connectionPool = retryExecutor.execute({ BrokerException.BrokerConnectionException() }, {
-        createConnectionPool(dbConnectionPoolSize, redisClient)
-        // createClusterConnectionPool(dbConnectionPoolSize, redisClient)
+        // createConnectionPool(dbConnectionPoolSize, redisClient)
+        createClusterConnectionPool(dbConnectionPoolSize, redisClient)
     })
 
     // Retry condition.
-    private val retryCondition: (throwable: Throwable) -> Boolean = { _ -> true }
+    private val retryCondition: (throwable: Throwable) -> Boolean = { throwable ->
+        !(throwable is RedisException && (!pubSubConnection.isOpen || connectionPool.isClosed))
+    }
 
     private val singletonRedisPubSubAdapter = object : RedisPubSubAdapter<String, String>() {
 
@@ -76,7 +77,7 @@ class BrokerRedis(
 
             val subscribers = associatedSubscribers.getAll(channel)
             if (subscribers.isNotEmpty()) {
-                val event = deserialize(message)
+                val event = BrokerSerializer.deserializeEventFromJson(message)
                 subscribers.forEach { subscriber -> subscriber.handler(event) }
             }
         }
@@ -134,11 +135,11 @@ class BrokerRedis(
     fun shutdown() {
         if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
 
+        isShutdown = true
         pubSubConnection.removeListener(singletonRedisPubSubAdapter)
         pubSubConnection.close()
         connectionPool.close()
         redisClient.shutdown()
-        isShutdown = true
     }
 
     /**
@@ -177,7 +178,7 @@ class BrokerRedis(
      */
     private fun unsubscribeTopic(topic: String) {
         retryExecutor.execute({ BrokerLostConnectionException() }, {
-            logger.info("unsubscribe topic '{}'", topic)
+            logger.info("unsubscribe gone topic '{}'", topic)
             pubSubConnection.async().unsubscribe(topic)
         }, retryCondition)
     }
@@ -198,7 +199,7 @@ class BrokerRedis(
                 message = message,
                 isLast = isLastMessage
             )
-            pubSubConnection.async().publish(topic, serialize(event))
+            pubSubConnection.async().publish(topic, BrokerSerializer.serializeEventToJson(event))
             logger.info("publish topic '{}' event '{}", topic, event)
         }, retryCondition)
     }
@@ -220,10 +221,10 @@ class BrokerRedis(
                 GET_EVENT_ID_AND_UPDATE_HISTORY_SCRIPT,
                 ScriptOutputType.INTEGER,
                 arrayOf(topic),
-                EventProp.ID.toString(),
-                EventProp.MESSAGE.toString(),
+                Event.Prop.ID.key,
+                Event.Prop.MESSAGE.key,
                 message,
-                EventProp.IS_LAST.toString(),
+                Event.Prop.IS_LAST.key,
                 isLast.toString()
             )
         }
@@ -240,9 +241,9 @@ class BrokerRedis(
             val lastEventProps = connectionPool.borrowObject().use { conn ->
                 conn.sync().hgetall(topic)
             }
-            val id = lastEventProps["${EventProp.ID}"]?.toLong()
-            val message = lastEventProps["${EventProp.MESSAGE}"]
-            val isLast = lastEventProps["${EventProp.IS_LAST}"]?.toBoolean()
+            val id = lastEventProps[Event.Prop.ID.key]?.toLong()
+            val message = lastEventProps[Event.Prop.MESSAGE.key]
+            val isLast = lastEventProps[Event.Prop.IS_LAST.key]?.toBoolean()
             return@execute if (id != null && message != null && isLast != null) {
                 Event(topic, id, message, isLast)
             } else {
@@ -253,21 +254,16 @@ class BrokerRedis(
     private companion object {
 
         // Logger instance for logging Broker class information.
-        private val logger = LoggerFactory.getLogger(BrokerRedis::class.java)
+        private val logger = LoggerFactory.getLogger(BrokerRedisLettucePubSub::class.java)
+
+        // Default database connection pool size.
+        const val DEFAULT_DB_CONNECTION_POOL_SIZE = 10
 
         // Minimum database connection pool size allowed.
         private const val MIN_DB_CONNECTION_POOL_SIZE = 2
 
         // Maximum database connection pool size allowed.
         private const val MAX_DB_CONNECTION_POOL_SIZE = 100
-
-        // Number of redis nodes in cluster.
-        // --- Change to Environment Variable ----
-        private const val NUMBER_OF_REDIS_NODES = 6
-
-        // Port number of first redis node in cluster.
-        // --- Change to Environment Variable ----
-        private const val START_REDIS_PORT = 7000
 
         // Script to atomically update history and get the identifier for the event.
         private val GET_EVENT_ID_AND_UPDATE_HISTORY_SCRIPT = """
@@ -301,13 +297,14 @@ class BrokerRedis(
 
         /**
          * Create a redis cluster client for database interactions.
+         * TODO (Use environment variables for hosts and ports of Redis nodes)
          *
          * @return The redis cluster client instance.
          */
         private fun createRedisClusterClient() =
             RedisClusterClient.create(
-                List(NUMBER_OF_REDIS_NODES) {
-                    RedisURI.Builder.redis(Environment.getRedisHost(), START_REDIS_PORT + it).build()
+                List(6) {
+                    RedisURI.Builder.redis("localhost", 7000 + it).build()
                 }
             )
 
@@ -342,24 +339,5 @@ class BrokerRedis(
             pool.maxTotal = dbConnectionPoolSize
             return ConnectionPoolSupport.createGenericObjectPool({ clusterClient.connect() }, pool)
         }
-
-        // ObjectMapper instance for serializing and deserializing JSON.
-        private val objectMapper = ObjectMapper().registerModules(KotlinModule.Builder().build())
-
-        /**
-         * Serialize an event to JSON string.
-         *
-         * @param event The event to serialize.
-         * @return The resulting JSON string.
-         */
-        private fun serialize(event: Event) = objectMapper.writeValueAsString(event)
-
-        /**
-         * Deserialize a JSON string to event.
-         *
-         * @param payload The JSON string to deserialize.
-         * @return The resulting event.
-         */
-        private fun deserialize(payload: String) = objectMapper.readValue(payload, Event::class.java)
     }
 }

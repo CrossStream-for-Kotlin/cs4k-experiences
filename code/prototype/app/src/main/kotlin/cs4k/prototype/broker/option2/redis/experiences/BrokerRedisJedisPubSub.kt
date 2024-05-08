@@ -1,19 +1,17 @@
 package cs4k.prototype.broker.option2.redis.experiences
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import cs4k.prototype.broker.common.AssociatedSubscribers
 import cs4k.prototype.broker.common.BrokerException.BrokerConnectionException
 import cs4k.prototype.broker.common.BrokerException.BrokerLostConnectionException
 import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.BrokerException.ConnectionPoolSizeException
 import cs4k.prototype.broker.common.BrokerException.UnexpectedBrokerException
+import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.Environment.getRedisHost
 import cs4k.prototype.broker.common.Environment.getRedisPort
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
 import cs4k.prototype.broker.common.Subscriber
-import cs4k.prototype.broker.option2.redis.EventProp
 import org.slf4j.LoggerFactory
 import redis.clients.jedis.Jedis
 import redis.clients.jedis.JedisPool
@@ -27,18 +25,21 @@ import kotlin.concurrent.thread
 // - Redis Pub/Sub using Redis as an in-memory data structure (key-value (hash) pair)
 
 // Not in use because:
-//    - All 'BrokerRedisJedisPubSub' instances receive all events,
+//    - All 'BrokerRedisJedisPubSub' active instances receive all events,
 //      regardless of whether they have subscribers for those events.
 
 // @Component
 class BrokerRedisJedisPubSub(
-    private val dbConnectionPoolSize: Int = 10
+    private val dbConnectionPoolSize: Int = DEFAULT_DB_CONNECTION_POOL_SIZE
 ) {
 
     init {
         // Check database connection pool size.
         checkDbConnectionPoolSize(dbConnectionPoolSize)
     }
+
+    // Shutdown state.
+    private var isShutdown = false
 
     // Channel prefix and pattern.
     private val channelPrefix = "cs4k-"
@@ -61,8 +62,9 @@ class BrokerRedisJedisPubSub(
     }
 
     init {
-        // Start a new thread to subscribe pattern and process events.
+        // Start a new thread to ...
         thread {
+            // ... subscribe pattern and process events.
             subscribePattern()
         }
     }
@@ -75,7 +77,7 @@ class BrokerRedisJedisPubSub(
 
             val subscribers = associatedSubscribers.getAll(channel.substringAfter(channelPrefix))
             if (subscribers.isNotEmpty()) {
-                val event = deserialize(message)
+                val event = BrokerSerializer.deserializeEventFromJson(message)
                 subscribers.forEach { subscriber -> subscriber.handler(event) }
             }
         }
@@ -91,7 +93,7 @@ class BrokerRedisJedisPubSub(
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
-        if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
+        if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
 
         val subscriber = Subscriber(UUID.randomUUID(), handler)
         associatedSubscribers.addToKey(topic, subscriber)
@@ -112,7 +114,7 @@ class BrokerRedisJedisPubSub(
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
-        if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::publish.name}.")
+        if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::publish.name}.")
 
         publishMessage(topic, message, isLastMessage)
     }
@@ -124,8 +126,9 @@ class BrokerRedisJedisPubSub(
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     fun shutdown() {
-        if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
+        if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
 
+        isShutdown = true
         unsubscribePattern()
         connectionPool.close()
     }
@@ -184,7 +187,7 @@ class BrokerRedisJedisPubSub(
                     message = message,
                     isLast = isLastMessage
                 )
-                conn.publish(channelPrefix + topic, serialize(event))
+                conn.publish(channelPrefix + topic, BrokerSerializer.serializeEventToJson(event))
                 logger.info("publish topic '{}' event '{}", topic, event)
             }
         }, retryCondition)
@@ -205,11 +208,11 @@ class BrokerRedisJedisPubSub(
     private fun getEventIdAndUpdateHistory(conn: Jedis, topic: String, message: String, isLast: Boolean): Long {
         val transaction = conn.multi()
         return try {
-            transaction.hsetnx(topic, "${EventProp.ID}", "-1")
-            transaction.hincrBy(topic, "${EventProp.ID}", 1)
+            transaction.hsetnx(topic, Event.Prop.ID.key, "-1")
+            transaction.hincrBy(topic, Event.Prop.ID.key, 1)
             transaction.hmset(
                 topic,
-                hashMapOf("${EventProp.MESSAGE}" to message, "${EventProp.IS_LAST}" to isLast.toString())
+                hashMapOf(Event.Prop.MESSAGE.key to message, Event.Prop.IS_LAST.key to isLast.toString())
             )
             transaction.exec()
                 ?.getOrNull(1)
@@ -232,9 +235,9 @@ class BrokerRedisJedisPubSub(
     private fun getLastEvent(topic: String): Event? =
         retryExecutor.execute({ BrokerLostConnectionException() }, {
             val lastEventProps = connectionPool.resource.use { conn -> conn.hgetAll(topic) }
-            val id = lastEventProps["${EventProp.ID}"]?.toLong()
-            val message = lastEventProps["${EventProp.MESSAGE}"]
-            val isLast = lastEventProps["${EventProp.IS_LAST}"]?.toBoolean()
+            val id = lastEventProps[Event.Prop.ID.key]?.toLong()
+            val message = lastEventProps[Event.Prop.MESSAGE.key]
+            val isLast = lastEventProps[Event.Prop.IS_LAST.key]?.toBoolean()
             return@execute if (id != null && message != null && isLast != null) {
                 Event(topic, id, message, isLast)
             } else {
@@ -246,6 +249,9 @@ class BrokerRedisJedisPubSub(
 
         // Logger instance for logging Broker class information.
         private val logger = LoggerFactory.getLogger(BrokerRedisJedisPubSub::class.java)
+
+        // Default database connection pool size.
+        const val DEFAULT_DB_CONNECTION_POOL_SIZE = 10
 
         // Minimum database connection pool size allowed.
         const val MIN_DB_CONNECTION_POOL_SIZE = 2
@@ -273,29 +279,10 @@ class BrokerRedisJedisPubSub(
          * @param dbConnectionPoolSize The optional maximum size that the pool is allowed to reach.
          * @return The connection poll represented by a JedisPool instance.
          */
-        private fun createConnectionPool(dbConnectionPoolSize: Int = 10): JedisPool {
+        private fun createConnectionPool(dbConnectionPoolSize: Int): JedisPool {
             val jedisPoolConfig = JedisPoolConfig()
             jedisPoolConfig.maxTotal = dbConnectionPoolSize
             return JedisPool(jedisPoolConfig, getRedisHost(), getRedisPort())
         }
-
-        // ObjectMapper instance for serializing and deserializing JSON.
-        private val objectMapper = ObjectMapper().registerModules(KotlinModule.Builder().build())
-
-        /**
-         * Serialize an event to JSON string.
-         *
-         * @param event The event to serialize.
-         * @return The resulting JSON string.
-         */
-        private fun serialize(event: Event) = objectMapper.writeValueAsString(event)
-
-        /**
-         * Deserialize a JSON string to event.
-         *
-         * @param payload The JSON string to deserialize.
-         * @return The resulting event.
-         */
-        private fun deserialize(payload: String) = objectMapper.readValue(payload, Event::class.java)
     }
 }
