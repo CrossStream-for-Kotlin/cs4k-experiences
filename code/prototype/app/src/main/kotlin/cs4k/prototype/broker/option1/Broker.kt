@@ -110,7 +110,7 @@ class Broker(
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     fun shutdown() {
-        if (connectionPool.isClosed) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
+        if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
 
         isShutdown = true
         unListen()
@@ -341,7 +341,7 @@ class Broker(
          * @return The connection poll represented by a HikariDataSource instance.
          * @see [HikariCP](https://github.com/brettwooldridge/HikariCP)
          */
-        private fun createConnectionPool(dbConnectionPoolSize: Int = 10): HikariDataSource {
+        private fun createConnectionPool(dbConnectionPoolSize: Int): HikariDataSource {
             val hikariConfig = HikariConfig()
             hikariConfig.jdbcUrl = Environment.getPostgreSQLDbUrl()
             hikariConfig.maximumPoolSize = dbConnectionPoolSize
