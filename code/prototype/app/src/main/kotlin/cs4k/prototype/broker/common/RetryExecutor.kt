@@ -19,7 +19,8 @@ class RetryExecutor(
      * @param action The action to execute.
      * @param exception The exception to throw if the action fails after retries.
      * @param retryCondition The condition to retry the action.
-     * @return The result of the action.
+     * @return The result of the action or 'Unit' if not to repeat.
+     * @throws BrokerException If the action cannot be executed after retries.
      */
     fun <T> execute(
         exception: () -> BrokerException,
@@ -30,7 +31,7 @@ class RetryExecutor(
             try {
                 return action()
             } catch (e: Exception) {
-                evaluateException(retryCondition, e)
+                if (!isToRetry(retryCondition, e)) return Unit as T     // throw exception
             }
         }
         throw exception()
@@ -42,7 +43,8 @@ class RetryExecutor(
      * @param action The suspend action to execute.
      * @param exception The exception to throw if the action fails after retries.
      * @param retryCondition The condition to retry the action.
-     * @return The result of the action.
+     * @return The result of the action or 'Unit' if not to repeat.
+     * @throws BrokerException If the action cannot be executed after retries.
      */
     suspend fun <T> suspendExecute(
         exception: () -> BrokerException,
@@ -53,7 +55,7 @@ class RetryExecutor(
             try {
                 return action()
             } catch (e: Exception) {
-                evaluateException(retryCondition, e)
+                if (!isToRetry(retryCondition, e)) return Unit as T     // throw exception
             }
         }
         throw exception()
@@ -64,15 +66,17 @@ class RetryExecutor(
      *
      * @param retryCondition The condition to retry the action.
      * @param exception The captured exception.
+     * @return True if it is to retry.
      */
-    private fun evaluateException(retryCondition: (Throwable) -> Boolean, exception: Exception) {
+    private fun isToRetry(retryCondition: (Throwable) -> Boolean, exception: Exception): Boolean {
         logger.error("error executing action, message '{}'", exception.message)
-        if (retryCondition(exception)) {
+        return if (retryCondition(exception)) {
             logger.error("... retrying ...")
             Thread.sleep(waitTimeMillis)
+            true
         } else {
             logger.error("... not retrying ...")
-            throw exception
+            false
         }
     }
 
