@@ -256,7 +256,7 @@ class BrokerRedisLettucePubSub(
         private val logger = LoggerFactory.getLogger(BrokerRedisLettucePubSub::class.java)
 
         // Default database connection pool size.
-        const val DEFAULT_DB_CONNECTION_POOL_SIZE = 10
+        private const val DEFAULT_DB_CONNECTION_POOL_SIZE = 10
 
         // Minimum database connection pool size allowed.
         private const val MIN_DB_CONNECTION_POOL_SIZE = 2

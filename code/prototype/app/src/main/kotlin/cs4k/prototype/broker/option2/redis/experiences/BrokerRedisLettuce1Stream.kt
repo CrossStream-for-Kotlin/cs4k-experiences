@@ -255,7 +255,7 @@ class BrokerRedisLettuce1Stream(
     private companion object {
 
         // The time that blocks reading the stream.
-        const val BLOCK_READ_TIME = 2000L
+        private const val BLOCK_READ_TIME = 2000L
 
         // Read stream offset.
         private const val OFFSET = 0L
@@ -267,13 +267,13 @@ class BrokerRedisLettuce1Stream(
         private val logger = LoggerFactory.getLogger(BrokerRedisLettuce1Stream::class.java)
 
         // Default database connection pool size.
-        const val DEFAULT_DB_CONNECTION_POOL_SIZE = 10
+        private const val DEFAULT_DB_CONNECTION_POOL_SIZE = 10
 
         // Minimum database connection pool size allowed.
-        const val MIN_DB_CONNECTION_POOL_SIZE = 2
+        private const val MIN_DB_CONNECTION_POOL_SIZE = 2
 
         // Maximum database connection pool size allowed.
-        const val MAX_DB_CONNECTION_POOL_SIZE = 100
+        private const val MAX_DB_CONNECTION_POOL_SIZE = 100
 
         /**
          * Check if the provided database connection pool size is within the acceptable range.

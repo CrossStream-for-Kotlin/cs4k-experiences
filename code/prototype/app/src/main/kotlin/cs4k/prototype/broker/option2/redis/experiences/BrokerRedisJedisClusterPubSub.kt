@@ -234,13 +234,13 @@ class BrokerRedisJedisClusterPubSub(
         private val logger = LoggerFactory.getLogger(BrokerRedisJedisClusterPubSub::class.java)
 
         // Default database connection pool size.
-        const val DEFAULT_DB_CONNECTION_POOL_SIZE = 10
+        private const val DEFAULT_DB_CONNECTION_POOL_SIZE = 10
 
         // Minimum database connection pool size allowed.
-        const val MIN_DB_CONNECTION_POOL_SIZE = 2
+        private const val MIN_DB_CONNECTION_POOL_SIZE = 2
 
         // Maximum database connection pool size allowed.
-        const val MAX_DB_CONNECTION_POOL_SIZE = 100
+        private const val MAX_DB_CONNECTION_POOL_SIZE = 100
 
         // Script to atomically update history and get the identifier for the event.
         private val GET_EVENT_ID_AND_UPDATE_HISTORY_SCRIPT = """
