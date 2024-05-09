@@ -1,10 +1,11 @@
 package cs4k.prototype.broker.option2.redis.experiences
 
 import cs4k.prototype.broker.common.AssociatedSubscribers
-import cs4k.prototype.broker.common.BrokerException
+import cs4k.prototype.broker.common.BrokerException.BrokerConnectionException
 import cs4k.prototype.broker.common.BrokerException.BrokerLostConnectionException
 import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.BrokerException.ConnectionPoolSizeException
+import cs4k.prototype.broker.common.BrokerException.UnexpectedBrokerException
 import cs4k.prototype.broker.common.Environment
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
@@ -56,12 +57,12 @@ class BrokerRedisLettuce1Stream(
     private val retryExecutor = RetryExecutor()
 
     // Redis client.
-    private val redisClient = retryExecutor.execute({ BrokerException.BrokerConnectionException() }, {
+    private val redisClient = retryExecutor.execute({ BrokerConnectionException() }, {
         createRedisClient()
     })
 
     // Connection pool.
-    private val connectionPool = retryExecutor.execute({ BrokerException.BrokerConnectionException() }, {
+    private val connectionPool = retryExecutor.execute({ BrokerConnectionException() }, {
         createConnectionPool(dbConnectionPoolSize, redisClient)
     })
 
@@ -82,6 +83,7 @@ class BrokerRedisLettuce1Stream(
      * Listen the stream.
      *
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
+     * @throws UnexpectedBrokerException If something unexpected happens.
      */
     private fun listenStream() {
         retryExecutor.execute({ BrokerLostConnectionException() }, {
@@ -102,9 +104,10 @@ class BrokerRedisLettuce1Stream(
      * Process the message, i.e., create an event from the message and call the handler of the associated subscribers.
      *
      * @param payload The message properties.
+     * @throws UnexpectedBrokerException If something unexpected happens.
      */
     private fun processMessage(payload: Map<String, String>) {
-        val topic = payload[Event.Prop.TOPIC.key] ?: throw BrokerException.UnexpectedBrokerException()
+        val topic = payload[Event.Prop.TOPIC.key] ?: throw UnexpectedBrokerException()
         val subscribers = associatedSubscribers.getAll(topic)
         if (subscribers.isNotEmpty()) {
             val event = createEvent(topic, payload)
@@ -120,6 +123,7 @@ class BrokerRedisLettuce1Stream(
      * @return The method to be called when unsubscribing.
      * @throws BrokerTurnOffException If the broker is turned off.
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
+     * @throws UnexpectedBrokerException If something unexpected happens.
      */
     fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
         if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
@@ -141,6 +145,7 @@ class BrokerRedisLettuce1Stream(
      * @param isLastMessage Indicates if the message is the last one.
      * @throws BrokerTurnOffException If the broker is turned off.
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
+     * @throws UnexpectedBrokerException If something unexpected happens.
      */
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
         if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::publish.name}.")
@@ -152,7 +157,6 @@ class BrokerRedisLettuce1Stream(
      * Shutdown the broker.
      *
      * @throws BrokerTurnOffException If the broker is turned off.
-     * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     fun shutdown() {
         if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
@@ -180,6 +184,7 @@ class BrokerRedisLettuce1Stream(
      * @param message The message to send.
      * @param isLastMessage Indicates if the message is the last one.
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
+     * @throws UnexpectedBrokerException If something unexpected happens.
      */
     private fun addMessageToStream(topic: String, message: String, isLastMessage: Boolean) {
         retryExecutor.execute({ BrokerLostConnectionException() }, {
@@ -204,6 +209,7 @@ class BrokerRedisLettuce1Stream(
      * @param sync The RedisCommands API for the current connection.
      * @return The last event of the topic, or null if the topic does not exist yet.
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
+     * @throws UnexpectedBrokerException If something unexpected happens.
      */
     private fun getLastEvent(topic: String, sync: RedisCommands<String, String>? = null): Event? =
         retryExecutor.execute({ BrokerLostConnectionException() }, {
@@ -236,12 +242,13 @@ class BrokerRedisLettuce1Stream(
      * @param topic The topic of the message.
      * @param payload The message properties.
      * @return The resulting event.
+     * @throws UnexpectedBrokerException If something unexpected happens.
      */
     private fun createEvent(topic: String, payload: Map<String, String>): Event {
         val id = payload[Event.Prop.ID.key]?.toLong()
         val message = payload[Event.Prop.MESSAGE.key]
         val isLast = payload[Event.Prop.IS_LAST.key]?.toBoolean()
-        if (id == null || message == null || isLast == null) throw BrokerException.UnexpectedBrokerException()
+        if (id == null || message == null || isLast == null) throw UnexpectedBrokerException()
         return Event(topic, id, message, isLast)
     }
 

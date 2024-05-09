@@ -194,7 +194,6 @@ class BrokerRedisJedisClusterPubSub(
      * @param message The message.
      * @param isLast Indicates if the message is the last one.
      * @return The event id.
-     * @throws UnexpectedBrokerException If something unexpected happens.
      */
     private fun getEventIdAndUpdateHistory(conn: JedisCluster, topic: String, message: String, isLast: Boolean): Long =
         conn.eval(

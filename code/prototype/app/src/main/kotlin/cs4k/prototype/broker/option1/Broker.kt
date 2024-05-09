@@ -96,6 +96,7 @@ class Broker(
      * @param isLastMessage Indicates if the message is the last one.
      * @throws BrokerTurnOffException If the broker is turned off.
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
+     * @throws UnexpectedBrokerException If something unexpected happens.
      */
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
         if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::publish.name}.")
@@ -163,11 +164,15 @@ class Broker(
 
     /**
      * Listen for notifications.
+     *
+     * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     private fun listen() = Listen.execute()
 
     /**
      * UnListen for notifications.
+     *
+     * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     private fun unListen() = UnListen.execute()
 
@@ -194,6 +199,7 @@ class Broker(
      * @param message The message to send.
      * @param isLastMessage Indicates if the message is the last one.
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
+     * @throws UnexpectedBrokerException If something unexpected happens.
      */
     private fun notify(topic: String, message: String, isLastMessage: Boolean) {
         retryExecutor.execute({ BrokerLostConnectionException() }, {

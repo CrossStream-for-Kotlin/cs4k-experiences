@@ -112,6 +112,7 @@ class BrokerRedisJedisPubSub(
      * @param isLastMessage Indicates if the message is the last one.
      * @throws BrokerTurnOffException If the broker is turned off.
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
+     * @throws UnexpectedBrokerException If something unexpected happens.
      */
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
         if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::publish.name}.")
@@ -177,6 +178,7 @@ class BrokerRedisJedisPubSub(
      * @param message The message to send.
      * @param isLastMessage Indicates if the message is the last one.
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
+     * @throws UnexpectedBrokerException If something unexpected happens.
      */
     private fun publishMessage(topic: String, message: String, isLastMessage: Boolean) {
         retryExecutor.execute({ BrokerLostConnectionException() }, {
