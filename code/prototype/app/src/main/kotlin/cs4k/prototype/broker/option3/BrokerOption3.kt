@@ -34,7 +34,8 @@ class BrokerOption3 {
         }
     }
 
-    fun listenMulticastSocket() {
+    private fun listenMulticastSocket() {
+        logger.info("start reading socket ip '{}' port '{}'", MULTICAST_IP, MULTICAST_PORT)
         while (!multicastSocket.isClosed) {
             try {
                 val receivedDatagramPacket = DatagramPacket(inboundBuffer, inboundBuffer.size)
