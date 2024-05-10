@@ -49,8 +49,8 @@ class BrokerRedisLettucePubSub(
 
     // Redis client.
     private val redisClient = retryExecutor.execute({ BrokerException.BrokerConnectionException() }, {
-        // createRedisClient()
-        createRedisClusterClient()
+        createRedisClient()
+        // createRedisClusterClient()
     })
 
     // Connection to asynchronous subscribe, unsubscribe and publish.
@@ -60,8 +60,8 @@ class BrokerRedisLettucePubSub(
 
     // Connection pool.
     private val connectionPool = retryExecutor.execute({ BrokerException.BrokerConnectionException() }, {
-        // createConnectionPool(dbConnectionPoolSize, redisClient)
-        createClusterConnectionPool(dbConnectionPoolSize, redisClient)
+        createConnectionPool(dbConnectionPoolSize, redisClient)
+        // createClusterConnectionPool(dbConnectionPoolSize, redisClient)
     })
 
     // Retry condition.
