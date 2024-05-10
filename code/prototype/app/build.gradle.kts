@@ -180,3 +180,22 @@ task<Exec>("prototypeOption2RedisComposeDown") {
     commandLine("docker-compose", "-f", "../docker-compose-prototype-option2-redis.yaml", "down")
 }
 
+// Option 3
+
+task<Exec>("prototypeOption3ComposeUp") {
+    commandLine(
+        "docker-compose",
+        "-f",
+        "../docker-compose-prototype-option3.yaml",
+        "up",
+        "--build",
+        "--force-recreate",
+        "--scale",
+        "spring-service=3"
+    )
+    dependsOn("extractUberJar")
+}
+
+task<Exec>("prototypeOption3ComposeDown") {
+    commandLine("docker-compose", "-f", "../docker-compose-prototype-option3.yaml", "down")
+}
