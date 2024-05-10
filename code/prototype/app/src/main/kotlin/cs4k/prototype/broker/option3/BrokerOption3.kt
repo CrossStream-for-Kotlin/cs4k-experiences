@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.net.DatagramPacket
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.MulticastSocket
 import java.net.SocketException
 import java.util.UUID
@@ -16,32 +17,35 @@ import kotlin.concurrent.thread
 @Component
 class BrokerOption3 {
 
-    private val multicastGroup: InetAddress = InetAddress.getByName(MULTICAST_IP)
-    private val socket = MulticastSocket(MULTICAST_PORT)
+    private val inetAddress = InetAddress.getByName(MULTICAST_IP)
+    private val inetSocketAddress = InetSocketAddress(inetAddress, MULTICAST_PORT)
+    private val multicastSocket = MulticastSocket(MULTICAST_PORT)
+    private val networkInterface = Utils.getActiveMulticastNetworkInterface()
     private val inboundBuffer = ByteArray(INBOUND_BUFFER_SIZE)
 
     private val associatedSubscribers = AssociatedSubscribers()
 
     init {
-        socket.joinGroup(multicastGroup)
+        multicastSocket.timeToLive = TIME_TO_LIVE
+        multicastSocket.joinGroup(inetSocketAddress, networkInterface)
 
         thread {
-            listenSocket()
+            listenMulticastSocket()
         }
     }
 
-    fun listenSocket() {
-        while (true) {
+    fun listenMulticastSocket() {
+        while (!multicastSocket.isClosed) {
             try {
                 val receivedDatagramPacket = DatagramPacket(inboundBuffer, inboundBuffer.size)
-                socket.receive(receivedDatagramPacket)
+                multicastSocket.receive(receivedDatagramPacket)
 
                 val receivedMessage = String(receivedDatagramPacket.data.copyOfRange(0, receivedDatagramPacket.length))
-                val receivedEvent = BrokerSerializer.deserializeEventFromJson(receivedMessage)
-                logger.info("new event topic '{}' event '{}", receivedEvent.topic, receivedEvent)
+                val event = BrokerSerializer.deserializeEventFromJson(receivedMessage)
+                logger.info("new event topic '{}' event '{}", event.topic, event)
                 associatedSubscribers
-                    .getAll(receivedEvent.topic)
-                    .forEach { subscriber -> subscriber.handler(receivedEvent) }
+                    .getAll(event.topic)
+                    .forEach { subscriber -> subscriber.handler(event) }
             } catch (e: SocketException) {
                 break
             }
@@ -51,22 +55,26 @@ class BrokerOption3 {
     fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
         val subscriber = Subscriber(UUID.randomUUID(), handler)
         associatedSubscribers.addToKey(topic, subscriber)
+
         logger.info("new subscriber topic '{}' id '{}", topic, subscriber.id)
 
         return { unsubscribe(topic, subscriber) }
     }
 
     fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
-        val eventJson = BrokerSerializer.serializeEventToJson(Event(topic, -1, message, isLastMessage))
-        logger.info("publish topic '{}' event '{}", topic, eventJson)
+        val event = Event(topic, -1, message, isLastMessage)
+        val eventJsonBytes = BrokerSerializer.serializeEventToJson(event).toByteArray()
 
-        val datagramPacket = DatagramPacket(eventJson.toByteArray(), eventJson.length, multicastGroup, MULTICAST_PORT)
-        socket.send(datagramPacket)
+        val datagramPacket = DatagramPacket(eventJsonBytes, eventJsonBytes.size, inetSocketAddress)
+        multicastSocket.send(datagramPacket)
+
+        logger.info("publish topic '{}' event '{}", topic, event)
     }
 
     fun shutdown() {
-        socket.leaveGroup(multicastGroup)
-        socket.close()
+        multicastSocket.leaveGroup(inetSocketAddress, networkInterface)
+        multicastSocket.close()
+        logger.info("broker turned off")
     }
 
     private fun unsubscribe(topic: String, subscriber: Subscriber) {
@@ -80,5 +88,6 @@ class BrokerOption3 {
         private const val MULTICAST_IP = "228.5.6.7"
         private const val MULTICAST_PORT = 6789
         private const val INBOUND_BUFFER_SIZE = 2048
+        private const val TIME_TO_LIVE = 10
     }
 }
