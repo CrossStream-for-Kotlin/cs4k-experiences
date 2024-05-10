@@ -1,10 +1,5 @@
 FROM openjdk:17
 ARG DEPENDENCY=app/build/dependency
-
-# Adiciona o script ao Dockerfile
-COPY ./tests/scripts/wait-for-rabbitmq.sh ./bin/wait-for-rabbitmq.sh
-RUN chmod +x ./bin/wait-for-rabbitmq.sh
-
 # first layer with the external libs (i.e. the files that change the least).
 COPY ${DEPENDENCY}/BOOT-INF/lib /app/lib
 # second layer with the 'META-INF' contents.

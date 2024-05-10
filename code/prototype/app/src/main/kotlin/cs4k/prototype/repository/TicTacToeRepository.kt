@@ -2,11 +2,11 @@ package cs4k.prototype.repository
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
+import cs4k.prototype.broker.common.Environment
 import cs4k.prototype.domain.Game
 import cs4k.prototype.domain.GameError
 import org.postgresql.util.PGobject
 import org.springframework.stereotype.Component
-import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.Statement
 
@@ -160,11 +160,8 @@ class TicTacToeRepository {
     /**
      * Create a JBDC connection.
      */
-    private fun createConnection(): Connection {
-        val url = System.getenv("DB_URL")
-            ?: throw IllegalAccessException("No connection URL given - define DB_URL environment variable")
-        return DriverManager.getConnection(url)
-    }
+    private fun createConnection() =
+        DriverManager.getConnection(Environment.getPostgreSQLDbUrl())
 
     companion object {
         private val objectMapper = ObjectMapper().registerModules(KotlinModule.Builder().build())
