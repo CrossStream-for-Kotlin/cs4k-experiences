@@ -24,13 +24,16 @@ import io.lettuce.core.support.ConnectionPoolSupport
 import org.apache.commons.pool2.impl.GenericObjectPool
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig
 import org.slf4j.LoggerFactory
+import org.springframework.stereotype.Component
 import java.util.UUID
 
-// - Lettuce client
-// - Redis [Cluster] Pub/Sub using Redis as an in-memory data structure (key-value (hash) pair)
+// - Lettuce Java client
+// - Redis Pub/Sub using Redis as an in-memory data structure (key-value (hash) pair)
+// - Support for Redis Cluster (change 'redisClient' and 'connectionPool' below in code)
 
-// @Component
-class BrokerRedisLettucePubSub(
+// TODO (Support communication to single node or cluster without changing code)
+@Component
+class BrokerRedis(
     private val dbConnectionPoolSize: Int = Utils.DEFAULT_DB_CONNECTION_POOL_SIZE
 ) : Broker {
 
@@ -215,12 +218,12 @@ class BrokerRedisLettucePubSub(
      */
     private fun getLastEvent(topic: String): Event? =
         retryExecutor.execute({ BrokerLostConnectionException() }, {
-            val lastEventProps = connectionPool.borrowObject().use { conn ->
+            val map = connectionPool.borrowObject().use { conn ->
                 conn.sync().hgetall(topic)
             }
-            val id = lastEventProps[Event.Prop.ID.key]?.toLong()
-            val message = lastEventProps[Event.Prop.MESSAGE.key]
-            val isLast = lastEventProps[Event.Prop.IS_LAST.key]?.toBoolean()
+            val id = map[Event.Prop.ID.key]?.toLong()
+            val message = map[Event.Prop.MESSAGE.key]
+            val isLast = map[Event.Prop.IS_LAST.key]?.toBoolean()
             return@execute if (id != null && message != null && isLast != null) {
                 Event(topic, id, message, isLast)
             } else {
@@ -231,7 +234,7 @@ class BrokerRedisLettucePubSub(
     private companion object {
 
         // Logger instance for logging Broker class information.
-        private val logger = LoggerFactory.getLogger(BrokerRedisLettucePubSub::class.java)
+        private val logger = LoggerFactory.getLogger(BrokerRedis::class.java)
 
         // Script to atomically update history and get the identifier for the event.
         private val GET_EVENT_ID_AND_UPDATE_HISTORY_SCRIPT = """

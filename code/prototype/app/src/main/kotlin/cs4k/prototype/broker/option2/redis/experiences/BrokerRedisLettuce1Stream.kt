@@ -26,14 +26,14 @@ import org.slf4j.LoggerFactory
 import java.util.UUID
 import kotlin.concurrent.thread
 
-// - Lettuce client
-// - Redis Streams (1 stream - n topics)
-
-// Deprecated (not working!) because:
+// [NOTE] Deprecated (not working!!!), mainly, because:
 //    - A common stream for all topics implies that filtering has to be done on the client-side,
 //      which mainly raises the following problems:
 //          - How many elements to get to filter the latest event for a specific topic?
 //          - Possibly go through all elements of the stream to find the latest event, if the topic does not exist yet?
+
+// - Lettuce Java client
+// - Redis Streams (1 stream - n topics)
 
 // @Component
 class BrokerRedisLettuce1Stream(

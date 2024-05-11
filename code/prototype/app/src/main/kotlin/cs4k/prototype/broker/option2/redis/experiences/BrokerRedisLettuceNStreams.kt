@@ -36,12 +36,14 @@ import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 import kotlin.coroutines.cancellation.CancellationException
 
-// - Lettuce client
-// - Redis Streams (n streams - n topics)
-
-// Not in use because:
+// [NOTE] Discontinued, mainly, because:
 //      - One stream per topic means that the number of streams can scale uncontrollably.
 //      - Possible deadlocks.
+//      - Some indeterminate behavior.
+
+// - Lettuce Java client
+// - Redis Streams (n streams - n topics)
+// - Support for Redis Cluster
 
 // @Component
 class BrokerRedisLettuceNStreams(
@@ -330,7 +332,6 @@ class BrokerRedisLettuceNStreams(
 
         /**
          * Create a redis cluster client for database interactions.
-         * TODO (Use environment variables for hosts and ports of Redis nodes)
          *
          * @return The redis cluster client instance.
          */

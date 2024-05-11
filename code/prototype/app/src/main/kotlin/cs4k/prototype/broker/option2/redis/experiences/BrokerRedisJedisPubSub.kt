@@ -22,12 +22,13 @@ import redis.clients.jedis.exceptions.JedisException
 import java.util.UUID
 import kotlin.concurrent.thread
 
-// - Jedis client
-// - Redis Pub/Sub using Redis as an in-memory data structure (key-value (hash) pair)
-
-// Not in use because:
+// [NOTE] Discontinued, mainly, because:
 //    - All 'BrokerRedisJedisPubSub' active instances receive all events,
 //      regardless of whether they have subscribers for those events.
+
+// - Jedis Java client
+// - Redis Pub/Sub using Redis as an in-memory data structure (key-value (hash) pair)
+// - Support only for single Redis node
 
 // @Component
 class BrokerRedisJedisPubSub(
@@ -212,10 +213,10 @@ class BrokerRedisJedisPubSub(
      */
     private fun getLastEvent(topic: String): Event? =
         retryExecutor.execute({ BrokerLostConnectionException() }, {
-            val lastEventProps = connectionPool.resource.use { conn -> conn.hgetAll(topic) }
-            val id = lastEventProps[Event.Prop.ID.key]?.toLong()
-            val message = lastEventProps[Event.Prop.MESSAGE.key]
-            val isLast = lastEventProps[Event.Prop.IS_LAST.key]?.toBoolean()
+            val map = connectionPool.resource.use { conn -> conn.hgetAll(topic) }
+            val id = map[Event.Prop.ID.key]?.toLong()
+            val message = map[Event.Prop.MESSAGE.key]
+            val isLast = map[Event.Prop.IS_LAST.key]?.toBoolean()
             return@execute if (id != null && message != null && isLast != null) {
                 Event(topic, id, message, isLast)
             } else {

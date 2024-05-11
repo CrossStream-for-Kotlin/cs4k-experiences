@@ -21,12 +21,13 @@ import redis.clients.jedis.JedisShardedPubSub
 import java.util.UUID
 import kotlin.concurrent.thread
 
-// - Jedis client
-// - Redis Cluster Pub/Sub using Redis as an in-memory data structure (key-value (hash) pair)
-
-// Not in use because:
+// [NOTE] Discontinued, mainly, because:
 //    - All 'BrokerRedisJedisClusterPubSub' active instances receive all events,
 //      regardless of whether they have subscribers for those events.
+
+// - Jedis Java client
+// - Redis Pub/Sub using Redis as an in-memory data structure (key-value (hash) pair)
+// - Support only for Redis cluster
 
 // @Component
 class BrokerRedisJedisClusterPubSub(
@@ -194,10 +195,10 @@ class BrokerRedisJedisClusterPubSub(
      */
     private fun getLastEvent(topic: String): Event? =
         retryExecutor.execute({ BrokerLostConnectionException() }, {
-            val lastEventProps = clusterConnectionPool.hgetAll(topic)
-            val id = lastEventProps[Event.Prop.ID.key]?.toLong()
-            val message = lastEventProps[Event.Prop.MESSAGE.key]
-            val isLast = lastEventProps[Event.Prop.IS_LAST.key]?.toBoolean()
+            val map = clusterConnectionPool.hgetAll(topic)
+            val id = map[Event.Prop.ID.key]?.toLong()
+            val message = map[Event.Prop.MESSAGE.key]
+            val isLast = map[Event.Prop.IS_LAST.key]?.toBoolean()
             return@execute if (id != null && message != null && isLast != null) {
                 Event(topic, id, message, isLast)
             } else {
@@ -220,7 +221,6 @@ class BrokerRedisJedisClusterPubSub(
 
         /**
          * Create a cluster connection poll for database interactions.
-         * TODO (Use environment variables for hosts and ports of Redis nodes)
          *
          * @param dbConnectionPoolSize The maximum size that the pool is allowed to reach.
          * @return The cluster connection poll represented by a JedisPool instance.
