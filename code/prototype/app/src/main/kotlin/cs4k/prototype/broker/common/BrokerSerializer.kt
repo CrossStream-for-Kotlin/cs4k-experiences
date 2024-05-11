@@ -22,8 +22,8 @@ object BrokerSerializer {
     /**
      * Deserialize a JSON string to event.
      *
-     * @param payload The JSON string to deserialize.
+     * @param json The JSON string to deserialize.
      * @return The resulting event.
      */
-    fun deserializeEventFromJson(payload: String): Event = objectMapper.readValue(payload, Event::class.java)
+    fun deserializeEventFromJson(json: String): Event = objectMapper.readValue(json, Event::class.java)
 }

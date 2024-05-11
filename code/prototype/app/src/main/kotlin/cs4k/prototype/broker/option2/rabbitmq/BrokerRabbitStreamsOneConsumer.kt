@@ -6,6 +6,7 @@ import com.rabbitmq.client.Channel
 import com.rabbitmq.client.ConnectionFactory
 import com.rabbitmq.client.DefaultConsumer
 import com.rabbitmq.client.Envelope
+import cs4k.prototype.broker.Broker
 import cs4k.prototype.broker.common.AssociatedSubscribers
 import cs4k.prototype.broker.common.BrokerException.BrokerLostConnectionException
 import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
@@ -18,7 +19,7 @@ import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 
 // @Component
-class BrokerRabbitStreamsOneConsumer {
+class BrokerRabbitStreamsOneConsumer : Broker {
     // Association between topics and subscribers lists.
     private val associatedSubscribers = AssociatedSubscribers()
 
@@ -129,15 +130,7 @@ class BrokerRabbitStreamsOneConsumer {
     // Flag that indicates if broker is gracefully shutting down.
     private val isShutdown = AtomicBoolean(false)
 
-    /**
-     * Subscribe to a topic.
-     * @param topic The topic name.
-     * @param handler The handler to be called when there is a new event.
-     * @return The callback to be called when unsubscribing.
-     * @throws BrokerTurnOffException If the broker is turned off.
-     * @throws BrokerLostConnectionException If the broker lost connection to the database.
-     */
-    fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
+    override fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
         if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
         val subscriber = Subscriber(UUID.randomUUID(), handler)
         associatedSubscribers.addToKey(topic, subscriber)
@@ -165,16 +158,7 @@ class BrokerRabbitStreamsOneConsumer {
         logger.info("unsubscribe topic '{}' id '{}", topic, subscriber.id)
     }
 
-    /**
-     * Publish a message to a topic.
-     *
-     * @param topic The topic name.
-     * @param message The message to send.
-     * @param isLastMessage Indicates if the message is the last one.
-     * @throws BrokerTurnOffException If the broker is turned off.
-     * @throws BrokerLostConnectionException If the broker lost connection to the database.
-     */
-    fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
+    override fun publish(topic: String, message: String, isLastMessage: Boolean) {
         if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
         notify(topic, message, isLastMessage)
     }
@@ -215,13 +199,7 @@ class BrokerRabbitStreamsOneConsumer {
         }, retryCondition)
     }
 
-    /**
-     * Shutdown the broker.
-     *
-     * @throws BrokerTurnOffException If the broker is turned off.
-     * @throws BrokerLostConnectionException If the broker lost connection to the database.
-     */
-    fun shutdown() {
+    override fun shutdown() {
         if (isShutdown.compareAndSet(false, true)) {
             publishingChannelPool.close()
             consumingChannelPool.getChannel().queueDelete(streamName)

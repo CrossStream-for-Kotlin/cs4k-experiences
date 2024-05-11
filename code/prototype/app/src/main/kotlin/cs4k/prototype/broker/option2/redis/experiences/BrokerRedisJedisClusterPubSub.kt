@@ -1,16 +1,17 @@
 package cs4k.prototype.broker.option2.redis.experiences
 
+import cs4k.prototype.broker.Broker
 import cs4k.prototype.broker.common.AssociatedSubscribers
 import cs4k.prototype.broker.common.BrokerException.BrokerConnectionException
 import cs4k.prototype.broker.common.BrokerException.BrokerLostConnectionException
 import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
-import cs4k.prototype.broker.common.BrokerException.ConnectionPoolSizeException
 import cs4k.prototype.broker.common.BrokerException.UnexpectedBrokerException
 import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.Environment.getRedisHost
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
 import cs4k.prototype.broker.common.Subscriber
+import cs4k.prototype.broker.common.Utils
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig
 import org.slf4j.LoggerFactory
 import redis.clients.jedis.Connection
@@ -29,12 +30,12 @@ import kotlin.concurrent.thread
 
 // @Component
 class BrokerRedisJedisClusterPubSub(
-    private val dbConnectionPoolSize: Int = DEFAULT_DB_CONNECTION_POOL_SIZE
-) {
+    private val dbConnectionPoolSize: Int = Utils.DEFAULT_DB_CONNECTION_POOL_SIZE
+) : Broker {
 
     init {
         // Check database connection pool size.
-        checkDbConnectionPoolSize(dbConnectionPoolSize)
+        Utils.checkDbConnectionPoolSize(dbConnectionPoolSize)
     }
 
     // Shutdown state.
@@ -77,16 +78,7 @@ class BrokerRedisJedisClusterPubSub(
         }
     }
 
-    /**
-     * Subscribe to a topic.
-     *
-     * @param topic The topic name.
-     * @param handler The handler to be called when there is a new event.
-     * @return The method to be called when unsubscribing.
-     * @throws BrokerTurnOffException If the broker is turned off.
-     * @throws BrokerLostConnectionException If the broker lost connection to the database.
-     */
-    fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
+    override fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
         if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
 
         val subscriber = Subscriber(UUID.randomUUID(), handler)
@@ -98,28 +90,13 @@ class BrokerRedisJedisClusterPubSub(
         return { unsubscribe(topic, subscriber) }
     }
 
-    /**
-     * Publish a message to a topic.
-     *
-     * @param topic The topic name.
-     * @param message The message to send.
-     * @param isLastMessage Indicates if the message is the last one.
-     * @throws BrokerTurnOffException If the broker is turned off.
-     * @throws BrokerLostConnectionException If the broker lost connection to the database.
-     */
-    fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
+    override fun publish(topic: String, message: String, isLastMessage: Boolean) {
         if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::publish.name}.")
 
         publishMessage(topic, message, isLastMessage)
     }
 
-    /**
-     * Shutdown the broker.
-     *
-     * @throws BrokerTurnOffException If the broker is turned off.
-     * @throws BrokerLostConnectionException If the broker lost connection to the database.
-     */
-    fun shutdown() {
+    override fun shutdown() {
         if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
 
         isShutdown = true
@@ -233,15 +210,6 @@ class BrokerRedisJedisClusterPubSub(
         // Logger instance for logging Broker class information.
         private val logger = LoggerFactory.getLogger(BrokerRedisJedisClusterPubSub::class.java)
 
-        // Default database connection pool size.
-        private const val DEFAULT_DB_CONNECTION_POOL_SIZE = 10
-
-        // Minimum database connection pool size allowed.
-        private const val MIN_DB_CONNECTION_POOL_SIZE = 2
-
-        // Maximum database connection pool size allowed.
-        private const val MAX_DB_CONNECTION_POOL_SIZE = 100
-
         // Script to atomically update history and get the identifier for the event.
         private val GET_EVENT_ID_AND_UPDATE_HISTORY_SCRIPT = """
             redis.call('hsetnx', KEYS[1], ARGV[1], '-1')
@@ -251,24 +219,10 @@ class BrokerRedisJedisClusterPubSub(
         """.trimIndent()
 
         /**
-         * Check if the provided database connection pool size is within the acceptable range.
-         *
-         * @param dbConnectionPoolSize The size of the database connection pool to check.
-         * @throws ConnectionPoolSizeException If the size is outside the acceptable range.
-         */
-        private fun checkDbConnectionPoolSize(dbConnectionPoolSize: Int) {
-            if (dbConnectionPoolSize !in MIN_DB_CONNECTION_POOL_SIZE..MAX_DB_CONNECTION_POOL_SIZE) {
-                throw ConnectionPoolSizeException(
-                    "The connection pool size must be between $MIN_DB_CONNECTION_POOL_SIZE and $MAX_DB_CONNECTION_POOL_SIZE."
-                )
-            }
-        }
-
-        /**
          * Create a cluster connection poll for database interactions.
          * TODO (Use environment variables for hosts and ports of Redis nodes)
          *
-         * @param dbConnectionPoolSize The optional maximum size that the pool is allowed to reach.
+         * @param dbConnectionPoolSize The maximum size that the pool is allowed to reach.
          * @return The cluster connection poll represented by a JedisPool instance.
          */
         private fun createClusterConnectionPool(dbConnectionPoolSize: Int): JedisCluster {

@@ -7,8 +7,10 @@ import com.rabbitmq.client.Channel
 import com.rabbitmq.client.ConnectionFactory
 import com.rabbitmq.client.DefaultConsumer
 import com.rabbitmq.client.Envelope
+import cs4k.prototype.broker.Broker
 import cs4k.prototype.broker.common.BrokerException.*
 import cs4k.prototype.broker.common.AssociatedSubscribers
+import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
 import cs4k.prototype.broker.common.Subscriber
@@ -19,7 +21,7 @@ import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 
 // @Component
-class BrokerRabbitQueues {
+class BrokerRabbitQueues : Broker {
 
     // Association between topics and subscribers lists.
     private val associatedSubscribers = AssociatedSubscribers()
@@ -99,7 +101,7 @@ class BrokerRabbitQueues {
             requireNotNull(envelope)
             requireNotNull(body)
             val deliveryTag = envelope.deliveryTag
-            val event = deserialize(String(body))
+            val event = BrokerSerializer.deserializeEventFromJson(String(body))
             val latestEvent = latestTopicEvents.getLatestReceivedEvent(event.topic)
             if (event.message == "Request Latest Event") {
                 logger.info(
@@ -112,7 +114,7 @@ class BrokerRabbitQueues {
                     channel.basicPublish(
                         broadCastExchange, latestEvent.topic,
                         null,
-                        serialize(latestEvent).toByteArray()
+                        BrokerSerializer.serializeEventToJson(latestEvent).toByteArray()
                     )
                     channel.basicAck(deliveryTag, false)
                 }
@@ -157,16 +159,7 @@ class BrokerRabbitQueues {
     // Flag that indicates if broker is gracefully shutting down.
     private val isShutdown = AtomicBoolean(false)
 
-    /**
-     * Subscribe to a topic.
-     *
-     * @param topic The topic name.
-     * @param handler The handler to be called when there is a new event.
-     * @return The callback to be called when unsubscribing.
-     * @throws BrokerTurnOffException If the broker is turned off.
-     * @throws BrokerLostConnectionException If the broker lost connection to the database.
-     */
-    fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
+    override fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
         if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
 
         val subscriber = Subscriber(UUID.randomUUID(), handler)
@@ -183,7 +176,7 @@ class BrokerRabbitQueues {
     }
 
 
-    
+
 
     private fun getLastEvent(topic: String): Event? {
         val event = latestTopicEvents.getLatestEvent(topic)
@@ -191,28 +184,13 @@ class BrokerRabbitQueues {
         return event
     }
 
-    /**
-     * Publish a message to a topic.
-     *
-     * @param topic The topic name.
-     * @param message The message to send.
-     * @param isLastMessage Indicates if the message is the last one.
-     * @throws BrokerTurnOffException If the broker is turned off.
-     * @throws BrokerLostConnectionException If the broker lost connection to the database.
-     */
-    fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
+    override fun publish(topic: String, message: String, isLastMessage: Boolean) {
         if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
         logger.info("publishing message to topic '{} with message {} in broker {}'", topic, message, brokerNumber)
         notify(topic, message, isLastMessage)
     }
 
-    /**
-     * Shutdown the broker.
-     *
-     * @throws BrokerTurnOffException If the broker is turned off.
-     * @throws BrokerLostConnectionException If the broker lost connection to the database.
-     */
-    fun shutdown() {
+    override fun shutdown() {
         logger.info("Shutting down broker")
         if (isShutdown.compareAndSet(false, true)) {
             consumerChannelPool.close()
@@ -227,7 +205,7 @@ class BrokerRabbitQueues {
         val responseChannel = consumerChannelPool.getChannel()
         responseChannel.confirmSelect()
         //val qName = responseChannel.queueDeclare().queue
-        responseChannel.basicPublish(broadCastExchange, "", null, serialize(requestEvent).toByteArray())
+        responseChannel.basicPublish(broadCastExchange, "", null, BrokerSerializer.serializeEventToJson(requestEvent).toByteArray())
         //responseChannel.basicConsume(qName, true, consumerTag, ConsumerHandler(responseChannel))
         responseChannel.waitForConfirms()
         //responseChannel.queueDelete(qName)
@@ -289,7 +267,7 @@ class BrokerRabbitQueues {
             val id = latestTopicEvents.getNextEventId(topic)
             val event = Event(topic, id, message, isLastMessage)
             latestTopicEvents.setLatestSentEvent(topic, event)
-            channel.basicPublish(broadCastExchange, topic, null, serialize(event).toByteArray())
+            channel.basicPublish(broadCastExchange, topic, null, BrokerSerializer.serializeEventToJson(event).toByteArray())
             logger.info("Message successfully published to topic: $topic with message: $message")
             channel.waitForConfirms()
             publisherChannelPool.stopUsingChannel(channel)
@@ -307,7 +285,7 @@ class BrokerRabbitQueues {
             val channel = publisherChannelPool.getChannel()
             channel.confirmSelect()
             latestTopicEvents.setLatestSentEvent(event.topic, event)
-            channel.basicPublish(broadCastExchange, event.topic, null, serialize(event).toByteArray())
+            channel.basicPublish(broadCastExchange, event.topic, null, BrokerSerializer.serializeEventToJson(event).toByteArray())
             channel.waitForConfirms()
             publisherChannelPool.stopUsingChannel(channel)
         }, retryCondition)
@@ -322,25 +300,6 @@ class BrokerRabbitQueues {
             username = "user"
             password = "password"
         }
-
-        // ObjectMapper instance for serializing and deserializing JSON.
-        private val objectMapper = ObjectMapper().registerModules(KotlinModule.Builder().build())
-
-        /**
-         * Serialize an event to JSON string.
-         *
-         * @param event The event to serialize.
-         * @return The resulting JSON string.
-         */
-        private fun serialize(event: Event) = objectMapper.writeValueAsString(event)
-
-        /**
-         * Deserialize a JSON string to event.
-         *
-         * @param payload The JSON string to deserialize.
-         * @return The resulting event.
-         */
-        private fun deserialize(payload: String) = objectMapper.readValue(payload, Event::class.java)
     }
 }
 

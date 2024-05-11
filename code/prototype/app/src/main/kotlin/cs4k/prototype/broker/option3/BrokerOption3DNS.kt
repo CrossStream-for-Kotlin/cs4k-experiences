@@ -1,5 +1,6 @@
 package cs4k.prototype.broker.option3
 
+import cs4k.prototype.broker.Broker
 import cs4k.prototype.broker.common.AssociatedSubscribers
 import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.Environment
@@ -16,7 +17,7 @@ import java.util.UUID
 import kotlin.concurrent.thread
 
 @Component
-class BrokerOption3DNS {
+class BrokerOption3DNS : Broker {
 
     private val inetAddress = InetAddress.getByName(Environment.getHost())
 
@@ -79,7 +80,7 @@ class BrokerOption3DNS {
         }
     }
 
-    fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
+    override fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
         val subscriber = Subscriber(UUID.randomUUID(), handler)
         associatedSubscribers.addToKey(topic, subscriber)
 
@@ -88,7 +89,7 @@ class BrokerOption3DNS {
         return { unsubscribe(topic, subscriber) }
     }
 
-    fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
+    override fun publish(topic: String, message: String, isLastMessage: Boolean) {
         val event = Event(topic, 0, message, isLastMessage)
         val eventJsonBytes = BrokerSerializer.serializeEventToJson(event).toByteArray()
 
@@ -97,7 +98,7 @@ class BrokerOption3DNS {
         logger.info("publish topic '{}' event '{}", topic, event)
     }
 
-    fun shutdown() {
+    override fun shutdown() {
         connectedPeers.shutdown()
         outboundSocket.close()
         inboundSocket.close()
