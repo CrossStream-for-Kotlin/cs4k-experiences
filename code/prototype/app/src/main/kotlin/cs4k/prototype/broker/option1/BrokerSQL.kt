@@ -2,17 +2,18 @@ package cs4k.prototype.broker.option1
 
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
+import cs4k.prototype.broker.Broker
 import cs4k.prototype.broker.common.AssociatedSubscribers
 import cs4k.prototype.broker.common.BrokerException.BrokerConnectionException
 import cs4k.prototype.broker.common.BrokerException.BrokerLostConnectionException
 import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
-import cs4k.prototype.broker.common.BrokerException.ConnectionPoolSizeException
 import cs4k.prototype.broker.common.BrokerException.UnexpectedBrokerException
 import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.Environment
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
 import cs4k.prototype.broker.common.Subscriber
+import cs4k.prototype.broker.common.Utils
 import cs4k.prototype.broker.option1.ChannelCommandOperation.Listen
 import cs4k.prototype.broker.option1.ChannelCommandOperation.UnListen
 import org.postgresql.PGConnection
@@ -23,13 +24,13 @@ import java.util.UUID
 import kotlin.concurrent.thread
 
 // @Component
-class Broker(
-    private val dbConnectionPoolSize: Int = DEFAULT_DB_CONNECTION_POOL_SIZE
-) {
+class BrokerSQL(
+    private val dbConnectionPoolSize: Int = Utils.DEFAULT_DB_CONNECTION_POOL_SIZE
+) : Broker {
 
     init {
         // Check database connection pool size.
-        checkDbConnectionPoolSize(dbConnectionPoolSize)
+        Utils.checkDbConnectionPoolSize(dbConnectionPoolSize)
     }
 
     // Shutdown state.
@@ -67,16 +68,7 @@ class Broker(
         }
     }
 
-    /**
-     * Subscribe to a topic.
-     *
-     * @param topic The topic name.
-     * @param handler The handler to be called when there is a new event.
-     * @return The method to be called when unsubscribing.
-     * @throws BrokerTurnOffException If the broker is turned off.
-     * @throws BrokerLostConnectionException If the broker lost connection to the database.
-     */
-    fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
+    override fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
         if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
 
         val subscriber = Subscriber(UUID.randomUUID(), handler)
@@ -88,29 +80,13 @@ class Broker(
         return { unsubscribe(topic, subscriber) }
     }
 
-    /**
-     * Publish a message to a topic.
-     *
-     * @param topic The topic name.
-     * @param message The message to send.
-     * @param isLastMessage Indicates if the message is the last one.
-     * @throws BrokerTurnOffException If the broker is turned off.
-     * @throws BrokerLostConnectionException If the broker lost connection to the database.
-     * @throws UnexpectedBrokerException If something unexpected happens.
-     */
-    fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
+    override fun publish(topic: String, message: String, isLastMessage: Boolean) {
         if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::publish.name}.")
 
         notify(topic, message, isLastMessage)
     }
 
-    /**
-     * Shutdown the broker.
-     *
-     * @throws BrokerTurnOffException If the broker is turned off.
-     * @throws BrokerLostConnectionException If the broker lost connection to the database.
-     */
-    fun shutdown() {
+    override fun shutdown() {
         if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
 
         isShutdown = true
@@ -142,7 +118,7 @@ class Broker(
                 val pgConnection = conn.unwrap(PGConnection::class.java)
 
                 while (!conn.isClosed) {
-                    val newNotifications = pgConnection.getNotifications(0)
+                    val newNotifications = pgConnection.getNotifications(BLOCK_UNTIL_NEW_NOTIFICATIONS)
                         ?: throw UnexpectedBrokerException()
                     newNotifications.forEach { notification ->
                         if (notification.name == channel) {
@@ -315,35 +291,15 @@ class Broker(
 
     private companion object {
         // Logger instance for logging Broker class information.
-        private val logger = LoggerFactory.getLogger(Broker::class.java)
+        private val logger = LoggerFactory.getLogger(BrokerSQL::class.java)
 
-        // Default database connection pool size.
-        private const val DEFAULT_DB_CONNECTION_POOL_SIZE = 10
-
-        // Minimum database connection pool size allowed.
-        private const val MIN_DB_CONNECTION_POOL_SIZE = 2
-
-        // Maximum database connection pool size allowed.
-        private const val MAX_DB_CONNECTION_POOL_SIZE = 100
-
-        /**
-         * Check if the provided database connection pool size is within the acceptable range.
-         *
-         * @param dbConnectionPoolSize The size of the database connection pool to check.
-         * @throws ConnectionPoolSizeException If the size is outside the acceptable range.
-         */
-        private fun checkDbConnectionPoolSize(dbConnectionPoolSize: Int) {
-            if (dbConnectionPoolSize !in MIN_DB_CONNECTION_POOL_SIZE..MAX_DB_CONNECTION_POOL_SIZE) {
-                throw ConnectionPoolSizeException(
-                    "The connection pool size must be between $MIN_DB_CONNECTION_POOL_SIZE and $MAX_DB_CONNECTION_POOL_SIZE."
-                )
-            }
-        }
+        // Block until new notifications arrive, using the value '0'.
+        private const val BLOCK_UNTIL_NEW_NOTIFICATIONS = 0
 
         /**
          * Create a connection poll for database interactions.
          *
-         * @param dbConnectionPoolSize The optional maximum size that the pool is allowed to reach.
+         * @param dbConnectionPoolSize The maximum size that the pool is allowed to reach.
          * @return The connection poll represented by a HikariDataSource instance.
          * @see [HikariCP](https://github.com/brettwooldridge/HikariCP)
          */

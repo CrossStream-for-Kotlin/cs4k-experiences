@@ -27,7 +27,7 @@ class AssociatedSubscribers {
     }
 
     /**
-     * Check if there is no subscribers for a given topic.
+     * Check if there are no subscribers for a given topic.
      *
      * @param topic The topic to check.
      * @return True if there are no subscribers for a given topic.
@@ -39,14 +39,14 @@ class AssociatedSubscribers {
     /**
      * Update the last event identifier listened by the subscriber.
      *
-     * @param id The identifier of the subscriber.
+     * @param subscriberId The identifier of the subscriber.
      * @param topic The topic to which the subscriber is subscribed.
      * @param lastEventId The new last event identifier.
      */
-    fun updateLastEventIdListened(id: UUID, topic: String, lastEventId: Long) {
+    fun updateLastEventIdListened(subscriberId: UUID, topic: String, lastEventId: Long) {
         lock.withLock {
             val subscribers = map[topic] ?: return
-            val subscriber = subscribers.find { subscriber -> subscriber.id == id } ?: return
+            val subscriber = subscribers.find { subscriber -> subscriber.id == subscriberId } ?: return
             val updatedSubscriber = subscriber.copy(lastEventId = lastEventId)
             map[topic] = subscribers - subscriber + updatedSubscriber
         }
@@ -63,8 +63,12 @@ class AssociatedSubscribers {
         var newTopic = false
         lock.withLock {
             map.compute(topic) { _, subscribers ->
-                if (subscribers == null) newTopic = true
-                subscribers?.let { it + subscriber } ?: listOf(subscriber)
+                if (subscribers == null) {
+                    newTopic = true
+                    listOf(subscriber)
+                } else {
+                    subscribers + subscriber
+                }
             }
         }
         if (onTopicAdd != null && newTopic) onTopicAdd()

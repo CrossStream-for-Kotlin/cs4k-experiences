@@ -1,5 +1,6 @@
 package cs4k.prototype.broker.option3
 
+import cs4k.prototype.broker.Broker
 import cs4k.prototype.broker.common.AssociatedSubscribers
 import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.Event
@@ -15,7 +16,7 @@ import java.util.UUID
 import kotlin.concurrent.thread
 
 @Component
-class BrokerOption3 {
+class BrokerOption3 : Broker {
 
     private val inetAddress = InetAddress.getByName(MULTICAST_IP)
     private val inetSocketAddress = InetSocketAddress(inetAddress, MULTICAST_PORT)
@@ -53,7 +54,7 @@ class BrokerOption3 {
         }
     }
 
-    fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
+    override fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
         val subscriber = Subscriber(UUID.randomUUID(), handler)
         associatedSubscribers.addToKey(topic, subscriber)
 
@@ -62,7 +63,7 @@ class BrokerOption3 {
         return { unsubscribe(topic, subscriber) }
     }
 
-    fun publish(topic: String, message: String, isLastMessage: Boolean = false) {
+    override fun publish(topic: String, message: String, isLastMessage: Boolean) {
         val event = Event(topic, -1, message, isLastMessage)
         val eventJsonBytes = BrokerSerializer.serializeEventToJson(event).toByteArray()
 
@@ -72,7 +73,7 @@ class BrokerOption3 {
         logger.info("publish topic '{}' event '{}", topic, event)
     }
 
-    fun shutdown() {
+    override fun shutdown() {
         multicastSocket.leaveGroup(inetSocketAddress, networkInterface)
         multicastSocket.close()
         logger.info("broker turned off")

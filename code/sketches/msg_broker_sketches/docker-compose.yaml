@@ -7,11 +7,11 @@ services:
       context: .
       dockerfile: ./tests/Dockerfile-rabbitmq
     ports:
-      - 5672:5672
+      - "5672:5672"
     environment:
       - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbitmq_stream advertised_host localhost
   redis:
     container_name: redis
     image: redis:alpine
     ports:
-     - 6379:6379
+     - "6379:6379"

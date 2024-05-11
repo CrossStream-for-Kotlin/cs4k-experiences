@@ -162,6 +162,25 @@ task<Exec>("prototypeOption1ComposeDown") {
 
 // Option 2
 
+task<Exec>("prototypeOption2RabbitComposeUp") {
+    commandLine(
+        "docker-compose",
+        "-f",
+        "../docker-compose-prototype-option2-rabbit.yaml",
+        "up",
+        "--build",
+        "--force-recreate",
+        "--scale",
+        "spring-service=3"
+    )
+    dependsOn("extractUberJar")
+}
+
+task<Exec>("prototypeOption2RabbitComposeDown") {
+    commandLine("docker-compose", "-f", "../docker-compose-prototype-option2-rabbit.yaml", "down")
+}
+
+
 task<Exec>("prototypeOption2RedisComposeUp") {
     commandLine(
         "docker-compose",
