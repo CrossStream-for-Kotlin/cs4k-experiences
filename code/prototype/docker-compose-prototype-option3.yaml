@@ -21,6 +21,7 @@ services:
       - postgres
     command: ["scripts/wait-for-postgres.sh", "localhost"]
     environment:
+      SERVICE_NAME: "spring-service"
       PORT: 8080
       DB_URL: "jdbc:postgresql://postgres:5432/db?user=dbuser&password=changeit"
 
