@@ -16,4 +16,16 @@ data class Event(
     val message: String,
     val isLast: Boolean = false,
     val timestamp: Timestamp = Timestamp(System.currentTimeMillis())
-)
+) {
+    /**
+     * Represents the events properties.
+     *
+     * @property key The name of the key associated with the event property.
+     */
+    enum class Prop(val key: String) {
+        TOPIC("topic"),
+        ID("id"),
+        MESSAGE("message"),
+        IS_LAST("is_last");
+    }
+}

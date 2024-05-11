@@ -37,13 +37,13 @@ class AssociatedSubscribers {
     }
 
     /**
-     * Update the last event identifier of a subscriber.
+     * Update the last event identifier listened by the subscriber.
      *
      * @param id The identifier of the subscriber.
      * @param topic The topic to which the subscriber is subscribed.
      * @param lastEventId The new last event identifier.
      */
-    fun updateLastEventListened(id: UUID, topic: String, lastEventId: Long) {
+    fun updateLastEventIdListened(id: UUID, topic: String, lastEventId: Long) {
         lock.withLock {
             val subscribers = map[topic] ?: return
             val subscriber = subscribers.find { subscriber -> subscriber.id == id } ?: return

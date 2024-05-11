@@ -28,7 +28,7 @@ import kotlin.time.Duration.Companion.milliseconds
 /**
  * Deprecated: Many topics implies many different channels, which imply too many channel pools open at once.
  */
-class BrokerRabbitStreams(
+class BrokerRabbitStreamsSeveralStreams(
     private val subscribeDelay: Duration = 250.milliseconds,
     private val withholdTimeInMillis: Long = 5000
 ) {
@@ -43,7 +43,7 @@ class BrokerRabbitStreams(
     private val publishingChannelPool = ChannelPool(connectionFactory.newConnection(clusterAddresses))
 
     // Name of stream used to publish messages to.
-    private val streamName = "cs4k-notifications"
+    private val streamNamePrefix = "cs4k-notifications:"
 
     // ID of broker used as name for the queue to receive offset requests.
     private val brokerId = "cs4k-broker:" + UUID.randomUUID().toString()
@@ -100,11 +100,11 @@ class BrokerRabbitStreams(
         /**
          * Registers the event as the latest received and sends it to all subscribers.
          */
-        private fun processMessage(payload: String) {
+        private fun processMessage(offset: Long, payload: String) {
             val splitPayload = payload.split(";")
             val message = splitPayload.dropLast(1).joinToString(";")
             val isLast = splitPayload.last().toBoolean()
-            val eventToNotify = consumedTopics.createAndSetLatestEvent(topic, message, isLast)
+            val eventToNotify = consumedTopics.createAndSetLatestEvent(topic, offset, message, isLast)
             logger.info("event received from stream -> {}", eventToNotify)
             associatedSubscribers
                 .getAll(topic)
@@ -125,13 +125,12 @@ class BrokerRabbitStreams(
             requireNotNull(envelope)
             requireNotNull(body)
             requireNotNull(properties)
-            val filterValue = properties.headers["x-stream-filter-value"].toString()
             val offset = properties.headers["x-stream-offset"].toString().toLong()
             val storedOffset = consumedTopics.getOffsetNoWait(topic)
-            if (filterValue == topic && (storedOffset == null || offset > storedOffset)) {
+            if (storedOffset == null || offset > storedOffset) {
                 consumedTopics.setOffset(topic, offset)
                 val payload = String(body)
-                processMessage(payload)
+                processMessage(offset, payload)
             }
             val deliveryTag = envelope.deliveryTag
             channel.basicAck(deliveryTag, false)
@@ -194,20 +193,18 @@ class BrokerRabbitStreams(
     /**
      * Creates a common stream to receive events.
      */
-    private fun createStream() {
+    private fun createStream(topic: String, channel: Channel) {
         retryExecutor.execute({ BrokerLostConnectionException() }, {
-            val consumingChannel = consumingChannelPool.getChannel()
-            consumingChannel.queueDeclare(
-                streamName,
+            channel.queueDeclare(
+                streamNamePrefix + topic,
                 true,
                 false,
                 false,
                 mapOf(
                     "x-queue-type" to "stream",
-                    "x-max-length-bytes" to 100_000
+                    "x-max-length-bytes" to 10_000
                 )
             )
-            consumingChannelPool.stopUsingChannel(consumingChannel)
         }, retryCondition)
     }
 
@@ -234,7 +231,6 @@ class BrokerRabbitStreams(
     }
 
     init {
-        createStream()
         enableOffsetSharing()
     }
 
@@ -313,13 +309,14 @@ class BrokerRabbitStreams(
         try {
             topicLock?.lock()
             if (consumedTopics.isTopicBeingConsumed(topic) || consumedTopics.isBeingAnalyzed(topic)) return
-            val offset = consumedTopics.getOffset(topic, subscribeDelay) { fetchOffset(topic) } ?: "first"
+            val offset = consumedTopics.getOffset(topic, subscribeDelay) { fetchOffset(topic) } ?: "last"
             retryExecutor.execute({ BrokerLostConnectionException() }, {
                 val consumingChannel = consumingChannelPool.getChannel()
                 consumedTopics.setChannel(topic, consumingChannel)
+                createStream(topic, consumingChannel)
                 consumingChannel.basicQos(100)
                 val consumerTag = consumingChannel.basicConsume(
-                    streamName,
+                    streamNamePrefix + topic,
                     false,
                     mapOf(
                         "x-stream-offset" to offset,
@@ -375,9 +372,10 @@ class BrokerRabbitStreams(
         val payload = "$message;$isLastMessage"
         retryExecutor.execute({ BrokerLostConnectionException() }, {
             val publishingChannel = publishingChannelPool.getChannel()
+            createStream(topic, publishingChannel)
             publishingChannel.basicPublish(
                 "",
-                streamName,
+                streamNamePrefix + topic,
                 AMQP.BasicProperties.Builder()
                     .headers(
                         Collections.singletonMap("x-stream-filter-value", topic) as Map<String, Any>?
@@ -398,6 +396,11 @@ class BrokerRabbitStreams(
     fun shutdown() {
         if (isShutdown.compareAndSet(false, true)) {
             cleanExecutor.shutdown()
+            consumedTopics.getTopics().forEach {
+                val channel = consumingChannelPool.getChannel()
+                channel.queueDelete(streamNamePrefix + it)
+                consumingChannelPool.stopUsingChannel(channel)
+            }
             consumingChannelPool.getChannel().exchangeDelete(offsetExchange)
             consumingChannelPool.getChannel().queueDelete(brokerId)
             publishingChannelPool.close()
@@ -410,7 +413,7 @@ class BrokerRabbitStreams(
 
     private companion object {
         // Logger instance for logging Broker class information.
-        private val logger = LoggerFactory.getLogger(BrokerRabbitStreams::class.java)
+        private val logger = LoggerFactory.getLogger(BrokerRabbitStreamsSeveralStreams::class.java)
 
         /**
          * Creates the creator of connections for accessing RabbitMQ broker.

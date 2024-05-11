@@ -65,7 +65,7 @@ class BrokerRabbitQueues {
             .getAll(event.topic)
             .forEach { subscriber ->
                 if (subscriber.lastEventId < event.id) {
-                    associatedSubscribers.updateLastEventListened(subscriber.id, event.topic, event.id)
+                    associatedSubscribers.updateLastEventIdListened(subscriber.id, event.topic, event.id)
                     subscriber.handler(event)
                 }
             }

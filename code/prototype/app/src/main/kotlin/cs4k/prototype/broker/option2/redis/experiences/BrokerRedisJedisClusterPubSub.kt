@@ -1,18 +1,16 @@
 package cs4k.prototype.broker.option2.redis.experiences
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import cs4k.prototype.broker.common.AssociatedSubscribers
 import cs4k.prototype.broker.common.BrokerException.BrokerConnectionException
 import cs4k.prototype.broker.common.BrokerException.BrokerLostConnectionException
 import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.BrokerException.ConnectionPoolSizeException
 import cs4k.prototype.broker.common.BrokerException.UnexpectedBrokerException
+import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.Environment.getRedisHost
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
 import cs4k.prototype.broker.common.Subscriber
-import cs4k.prototype.broker.option2.redis.EventProp
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig
 import org.slf4j.LoggerFactory
 import redis.clients.jedis.Connection
@@ -26,23 +24,23 @@ import kotlin.concurrent.thread
 // - Redis Cluster Pub/Sub using Redis as an in-memory data structure (key-value (hash) pair)
 
 // Not in use because:
-//    - All 'BrokerRedisJedisClusterPubSub' instances receive all events,
+//    - All 'BrokerRedisJedisClusterPubSub' active instances receive all events,
 //      regardless of whether they have subscribers for those events.
 
 // @Component
 class BrokerRedisJedisClusterPubSub(
-    private val dbConnectionPoolSize: Int = 10
+    private val dbConnectionPoolSize: Int = DEFAULT_DB_CONNECTION_POOL_SIZE
 ) {
-
-    // Broker shutdown state.
-    private var isShutdown = false
 
     init {
         // Check database connection pool size.
         checkDbConnectionPoolSize(dbConnectionPoolSize)
     }
 
-    // Channel.
+    // Shutdown state.
+    private var isShutdown = false
+
+    // Channel to subscribe.
     private val channel = "share_channel"
 
     // Association between topics and subscribers lists.
@@ -72,7 +70,7 @@ class BrokerRedisJedisClusterPubSub(
             if (channel == null || message == null) throw UnexpectedBrokerException()
             logger.info("new message '{}' channel '{}'", message, channel)
 
-            val event = deserialize(message)
+            val event = BrokerSerializer.deserializeEventFromJson(message)
             associatedSubscribers
                 .getAll(event.topic)
                 .forEach { subscriber -> subscriber.handler(event) }
@@ -124,9 +122,9 @@ class BrokerRedisJedisClusterPubSub(
     fun shutdown() {
         if (isShutdown) throw BrokerTurnOffException("Cannot invoke ${::shutdown.name}.")
 
+        isShutdown = true
         unsubscribeChannel()
         clusterConnectionPool.close()
-        isShutdown = true
     }
 
     /**
@@ -181,7 +179,7 @@ class BrokerRedisJedisClusterPubSub(
                 message = message,
                 isLast = isLastMessage
             )
-            connection.spublish(channel, serialize(event))
+            connection.spublish(channel, BrokerSerializer.serializeEventToJson(event))
             logger.info("spublish topic '{}' event '{}", topic, event)
         }, retryCondition)
     }
@@ -196,17 +194,16 @@ class BrokerRedisJedisClusterPubSub(
      * @param message The message.
      * @param isLast Indicates if the message is the last one.
      * @return The event id.
-     * @throws UnexpectedBrokerException If something unexpected happens.
      */
     private fun getEventIdAndUpdateHistory(conn: JedisCluster, topic: String, message: String, isLast: Boolean): Long =
         conn.eval(
             GET_EVENT_ID_AND_UPDATE_HISTORY_SCRIPT,
             listOf(topic),
             listOf(
-                EventProp.ID.toString(),
-                EventProp.MESSAGE.toString(),
+                Event.Prop.ID.key,
+                Event.Prop.MESSAGE.key,
                 message,
-                EventProp.IS_LAST.toString(),
+                Event.Prop.IS_LAST.key,
                 isLast.toString()
             )
         ).toString().toLong()
@@ -221,9 +218,9 @@ class BrokerRedisJedisClusterPubSub(
     private fun getLastEvent(topic: String): Event? =
         retryExecutor.execute({ BrokerLostConnectionException() }, {
             val lastEventProps = clusterConnectionPool.hgetAll(topic)
-            val id = lastEventProps["${EventProp.ID}"]?.toLong()
-            val message = lastEventProps["${EventProp.MESSAGE}"]
-            val isLast = lastEventProps["${EventProp.IS_LAST}"]?.toBoolean()
+            val id = lastEventProps[Event.Prop.ID.key]?.toLong()
+            val message = lastEventProps[Event.Prop.MESSAGE.key]
+            val isLast = lastEventProps[Event.Prop.IS_LAST.key]?.toBoolean()
             return@execute if (id != null && message != null && isLast != null) {
                 Event(topic, id, message, isLast)
             } else {
@@ -236,26 +233,21 @@ class BrokerRedisJedisClusterPubSub(
         // Logger instance for logging Broker class information.
         private val logger = LoggerFactory.getLogger(BrokerRedisJedisClusterPubSub::class.java)
 
+        // Default database connection pool size.
+        private const val DEFAULT_DB_CONNECTION_POOL_SIZE = 10
+
         // Minimum database connection pool size allowed.
-        const val MIN_DB_CONNECTION_POOL_SIZE = 2
+        private const val MIN_DB_CONNECTION_POOL_SIZE = 2
 
         // Maximum database connection pool size allowed.
-        const val MAX_DB_CONNECTION_POOL_SIZE = 100
-
-        // Number of redis nodes in cluster.
-        // --- Change to Environment Variable ----
-        private const val NUMBER_OF_REDIS_NODES = 6
-
-        // Port number of first redis node in cluster.
-        // --- Change to Environment Variable ----
-        private const val START_REDIS_PORT = 7000
+        private const val MAX_DB_CONNECTION_POOL_SIZE = 100
 
         // Script to atomically update history and get the identifier for the event.
         private val GET_EVENT_ID_AND_UPDATE_HISTORY_SCRIPT = """
-        redis.call('hsetnx', KEYS[1], ARGV[1], '-1')
-        local id = redis.call('hincrby', KEYS[1], ARGV[1], 1)
-        redis.call('hmset', KEYS[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5])
-        return id
+            redis.call('hsetnx', KEYS[1], ARGV[1], '-1')
+            local id = redis.call('hincrby', KEYS[1], ARGV[1], 1)
+            redis.call('hmset', KEYS[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5])
+            return id
         """.trimIndent()
 
         /**
@@ -274,36 +266,18 @@ class BrokerRedisJedisClusterPubSub(
 
         /**
          * Create a cluster connection poll for database interactions.
+         * TODO (Use environment variables for hosts and ports of Redis nodes)
          *
          * @param dbConnectionPoolSize The optional maximum size that the pool is allowed to reach.
          * @return The cluster connection poll represented by a JedisPool instance.
          */
-        private fun createClusterConnectionPool(dbConnectionPoolSize: Int = 10): JedisCluster {
+        private fun createClusterConnectionPool(dbConnectionPoolSize: Int): JedisCluster {
             val poolConfig: GenericObjectPoolConfig<Connection> = GenericObjectPoolConfig<Connection>()
             poolConfig.maxTotal = dbConnectionPoolSize
-            val nodes = List(NUMBER_OF_REDIS_NODES) {
-                HostAndPort(getRedisHost(), START_REDIS_PORT + it)
+            val nodes = List(6) {
+                HostAndPort(getRedisHost(), 7000 + it)
             }
             return JedisCluster(nodes.toSet(), poolConfig)
         }
-
-        // ObjectMapper instance for serializing and deserializing JSON.
-        private val objectMapper = ObjectMapper().registerModules(KotlinModule.Builder().build())
-
-        /**
-         * Serialize an event to JSON string.
-         *
-         * @param event The event to serialize.
-         * @return The resulting JSON string.
-         */
-        private fun serialize(event: Event) = objectMapper.writeValueAsString(event)
-
-        /**
-         * Deserialize a JSON string to event.
-         *
-         * @param payload The JSON string to deserialize.
-         * @return The resulting event.
-         */
-        private fun deserialize(payload: String) = objectMapper.readValue(payload, Event::class.java)
     }
 }

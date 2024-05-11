@@ -83,6 +83,14 @@ class ConsumedTopics {
     private val offsetRequestList = mutableListOf<OffsetRequest>()
 
     /**
+     * Obtains all consumed events.
+     * @return All consumed events.
+     */
+    fun getTopics() = lock.withLock {
+        topicToConsumeInfo.keys
+    }
+
+    /**
      * Obtain a lock to control concurrently access to consumption of a topic.
      * @param topic Topic that is being consumed.
      * @returns The lock to control concurrent access.
@@ -168,9 +176,23 @@ class ConsumedTopics {
      * @param isLast If the event in question is the last of a given topic.
      * @return The newly created event.
      */
-    fun createAndSetLatestEvent(topic: String, message: String, isLast: Boolean) = lock.withLock {
+    fun createAndSetLatestEvent(topic: String, message: String, isLast: Boolean = false) = lock.withLock {
         val consumeInfo = topicToConsumeInfo[topic] ?: ConsumeInfo()
         val id = consumeInfo.latestEvent?.id?.plus(1L) ?: 0L
+        val recentEvent = Event(topic, id, message, isLast)
+        topicToConsumeInfo[topic] = consumeInfo.copy(latestEvent = EventInfo(recentEvent))
+        recentEvent
+    }
+
+    /**
+     * Create and set the latest event in a topic.
+     * @param topic The topic of the event.
+     * @param message The message of the event.
+     * @param isLast If the event in question is the last of a given topic.
+     * @return The newly created event.
+     */
+    fun createAndSetLatestEvent(topic: String, id: Long,  message: String, isLast: Boolean = false) = lock.withLock {
+        val consumeInfo = topicToConsumeInfo[topic] ?: ConsumeInfo()
         val recentEvent = Event(topic, id, message, isLast)
         topicToConsumeInfo[topic] = consumeInfo.copy(latestEvent = EventInfo(recentEvent))
         recentEvent
