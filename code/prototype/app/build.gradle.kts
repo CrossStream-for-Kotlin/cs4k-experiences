@@ -107,7 +107,7 @@ task<Exec>("rabbitUp") {
 
 task<Exec>("rabbitClusterUp") {
     val command = arrayOf("docker-compose", "up", "-d", "--build")
-    val services = command + arrayOf("rabbit-mq1", "rabbit-mq2", "rabbit-mq3")
+    val services = command + arrayOf("rabbit-mq1", "rabbit-mq2", "rabbit-mq3", "rabbit-mq4", "rabbit-mq5", "rabbit-mq6")
     commandLine(*services)
 }
 

@@ -56,6 +56,7 @@ class LatestTopicEvents {
     // Lock to ensure thread safety.
     private val lock = ReentrantLock()
 
+    private val mapAllEventsFromTopic = HashMap<String, MutableList<Event>>()
     /**
      * Obtain the latest topic. When both sent and received are defined, received is prioritized.
      * @param topic The topic of the event desired.
@@ -73,6 +74,33 @@ class LatestTopicEvents {
      */
     fun getLatestReceivedEvent(topic: String) = lock.withLock {
         map[topic]?.received?.toEvent(topic)
+    }
+
+    /**
+     * Obtain the latest sent event.
+     * @param topic The topic.
+     * @return The latest sent event.
+     */
+    fun getLatestSentEvent(topic: String) = lock.withLock {
+        map[topic]?.sent?.toEvent(topic)
+    }
+
+    /**
+     * List with all the received events from a topic.
+     * @param topic The topic.
+     */
+    fun getAllReceivedEvents(topic: String): List<Event> = lock.withLock {
+        mapAllEventsFromTopic[topic] ?: emptyList()
+    }
+    /**
+     * Add a event to the list of events from a topic.
+     * wihtout repetions of events
+     */
+    fun setEventToTopic(topic: String, event: Event) = lock.withLock {
+        val events = mapAllEventsFromTopic[topic] ?: mutableListOf()
+        if (events.contains(event)) return@withLock
+        events.add(event)
+        mapAllEventsFromTopic[topic] = events
     }
 
     /**
