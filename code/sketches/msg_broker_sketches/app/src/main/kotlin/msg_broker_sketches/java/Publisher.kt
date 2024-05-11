@@ -2,9 +2,8 @@ package msg_broker_sketches.java
 
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.ConnectionFactory
-import com.rabbitmq.client.MessageProperties
 import redis.clients.jedis.JedisPooled
-import java.util.*
+import java.util.Collections
 
 fun main() {
     rabbitMqPublisher()
@@ -15,10 +14,10 @@ fun rabbitMqPublisher() {
     val factory = ConnectionFactory()
     while (true) {
         val msg = readln()
-        if(msg == "") return
+        if (msg == "") return
         factory.newConnection().use { connection ->
             val channel = connection.createChannel()
-            channel.queueDeclare (
+            channel.queueDeclare(
                 STREAM_NAME,
                 true,
                 false, false,
@@ -41,10 +40,9 @@ fun rabbitMqPublisher() {
 
 fun redisPublisher() {
     val jedis = JedisPooled("localhost", 6379)
-    while(!jedis.pool.isClosed) {
+    while (!jedis.pool.isClosed) {
         val msg = readln()
         if (msg == "") return
         jedis.publish("notifications", msg)
     }
-
 }
