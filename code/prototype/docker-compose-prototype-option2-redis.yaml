@@ -52,7 +52,31 @@ services:
 
 # -----------------------------------------------------------------------------------------------------------
 
-# Redis Cluster
+# Redis cluster in containers environment does not work in communication between host (not Linux) and containers,
+# because communication limitation:
+
+# """ Redis Cluster and Docker
+# Currently, Redis Cluster does not support NATted environments and in general
+# environments where IP addresses or TCP ports are remapped.
+
+# Docker uses a technique called port mapping: programs running inside Docker containers
+# may be exposed with a different port compared to the one the program believes to be
+# using. This is useful for running multiple containers using the same ports, at the same
+# time, in the same server.
+
+# To make Docker compatible with Redis Cluster, you need to use Docker's host networking mode.
+# Please see the --net=host option in the Docker documentation for more
+# information."""
+#     see [https://redis.io/docs/latest/operate/oss_and_stack/management/scaling/]
+
+# """ Host network driver
+# The host networking driver only works on Linux hosts, but is available as a Beta feature, on Docker Desktop
+# version 4.29 and later. """
+#     see [https://docs.docker.com/network/drivers/host/]
+
+# NOTE: WSL2 was used for testing, according to [https://redis.io/learn/operate/redis-at-scale/scalability/exercise-1].
+
+# ---
 
 #version: '3'
 
