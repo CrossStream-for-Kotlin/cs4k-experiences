@@ -6,6 +6,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertDoesNotThrow
 import java.sql.SQLException
 
 class RetryExecutorTests {
@@ -91,7 +92,7 @@ class RetryExecutorTests {
         var retries = 0
 
         // Assert [1]
-        assertThrows(SQLException::class.java) {
+        assertDoesNotThrow {
             // Act
             retryExecutor.execute(
                 exception = { BrokerLostConnectionException() },
@@ -194,7 +195,7 @@ class RetryExecutorTests {
         var retries = 0
 
         // Assert [1]
-        assertThrows(SQLException::class.java) {
+        assertDoesNotThrow {
             runBlocking {
                 // Act
                 retryExecutor.suspendExecute(

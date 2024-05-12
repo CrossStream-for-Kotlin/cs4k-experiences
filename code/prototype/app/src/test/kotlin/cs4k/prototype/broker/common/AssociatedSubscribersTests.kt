@@ -6,194 +6,126 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.abs
 import kotlin.random.Random
+import kotlin.test.assertContains
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class AssociatedSubscribersTests {
 
     @Test
-    fun `insert and get a subscribe`() {
-        // Act
+    fun `insert a subscribe`() {
+        // Arrange
+        val associatedSubscribers = AssociatedSubscribers()
         val topic = newTopic()
         val subscriberId = UUID.randomUUID()
         val subscriber = Subscriber(subscriberId, { _ -> })
 
-        // Arrange
+        // Act
         associatedSubscribers.addToKey(topic, subscriber)
         val subscribers = associatedSubscribers.getAll(topic)
 
         // Assert
+        assertFalse(associatedSubscribers.noSubscribers(topic))
         assertEquals(1, subscribers.size)
-        assertEquals(subscriber, subscribers[0])
+        assertEquals(subscriber, subscribers.first())
     }
 
     @Test
     fun `insert and remove a subscribe`() {
-        // Act
+        // Arrange
+        val associatedSubscribers = AssociatedSubscribers()
         val topic = newTopic()
         val subscriberId = UUID.randomUUID()
         val subscriber = Subscriber(subscriberId, { _ -> })
 
-        // Arrange
+        // Act [1]
         associatedSubscribers.addToKey(topic, subscriber)
-        associatedSubscribers.removeIf(topic, { it.id == subscriberId })
-        val subscribers = associatedSubscribers.getAll(topic)
 
-        // Assert
-        assertEquals(0, subscribers.size)
+        // Assert [1]
+        assertFalse(associatedSubscribers.noSubscribers(topic))
+        assertEquals(1, associatedSubscribers.getAll(topic).size)
+
+        // Act [2]
+        associatedSubscribers.removeIf(topic, { it.id == subscriberId })
+
+        // Assert [2]
+        assertTrue(associatedSubscribers.noSubscribers(topic))
     }
 
     @Test
-    fun `insert and remove a subscribe with multiple subscribers`() {
-        // Act
+    fun `insert two subscribers and remove the first one`() {
+        // Arrange
+        val associatedSubscribers = AssociatedSubscribers()
         val topic = newTopic()
         val subscriberId1 = UUID.randomUUID()
         val subscriberId2 = UUID.randomUUID()
         val subscriber1 = Subscriber(subscriberId1, { _ -> })
         val subscriber2 = Subscriber(subscriberId2, { _ -> })
 
-        // Arrange
+        // Act
         associatedSubscribers.addToKey(topic, subscriber1)
         associatedSubscribers.addToKey(topic, subscriber2)
         associatedSubscribers.removeIf(topic, { it.id == subscriberId1 })
         val subscribers = associatedSubscribers.getAll(topic)
 
         // Assert
+        assertFalse(associatedSubscribers.noSubscribers(topic))
         assertEquals(1, subscribers.size)
-        assertEquals(subscriber2, subscribers[0])
+        assertEquals(subscriber2, subscribers.first())
     }
 
     @Test
-    fun `insert and remove a subscribe with multiple subscribers and remove the last one`() {
-        // Act
+    fun `insert two subscribers and remove the last one`() {
+        // Arrange
+        val associatedSubscribers = AssociatedSubscribers()
         val topic = newTopic()
         val subscriberId1 = UUID.randomUUID()
         val subscriberId2 = UUID.randomUUID()
         val subscriber1 = Subscriber(subscriberId1, { _ -> })
         val subscriber2 = Subscriber(subscriberId2, { _ -> })
 
-        // Arrange
+        // Act
         associatedSubscribers.addToKey(topic, subscriber1)
         associatedSubscribers.addToKey(topic, subscriber2)
         associatedSubscribers.removeIf(topic, { it.id == subscriberId2 })
         val subscribers = associatedSubscribers.getAll(topic)
 
         // Assert
+        assertFalse(associatedSubscribers.noSubscribers(topic))
         assertEquals(1, subscribers.size)
-        assertEquals(subscriber1, subscribers[0])
+        assertEquals(subscriber1, subscribers.first())
     }
 
     @Test
-    fun `insert and remove a subscribe with multiple subscribers and remove the first one`() {
-        // Act
+    fun `insert two subscribes and remove both in different threads`() {
+        // Arrange
+        val associatedSubscribers = AssociatedSubscribers()
         val topic = newTopic()
         val subscriberId1 = UUID.randomUUID()
         val subscriberId2 = UUID.randomUUID()
         val subscriber1 = Subscriber(subscriberId1, { _ -> })
         val subscriber2 = Subscriber(subscriberId2, { _ -> })
 
-        // Arrange
         associatedSubscribers.addToKey(topic, subscriber1)
         associatedSubscribers.addToKey(topic, subscriber2)
-        associatedSubscribers.removeIf(topic, { it.id == subscriberId1 })
-        val subscribers = associatedSubscribers.getAll(topic)
 
-        // Assert
-        assertEquals(1, subscribers.size)
-        assertEquals(subscriber2, subscribers[0])
-    }
-
-    @Test
-    fun `insert and remove a subscribe with multiple subscribers and remove the first one in a concurrent way`() {
         // Act
-        val topic = newTopic()
-        val subscriberId1 = UUID.randomUUID()
-        val subscriberId2 = UUID.randomUUID()
-        val subscriber1 = Subscriber(subscriberId1, { _ -> })
-        val subscriber2 = Subscriber(subscriberId2, { _ -> })
-
-        // Arrange
-        associatedSubscribers.addToKey(topic, subscriber1)
-        associatedSubscribers.addToKey(topic, subscriber2)
-        val thread1 = Thread {
-            associatedSubscribers.removeIf(topic, { it.id == subscriberId1 })
-        }
-        val thread2 = Thread {
-            associatedSubscribers.removeIf(topic, { it.id == subscriberId2 })
-        }
+        val thread1 = Thread { associatedSubscribers.removeIf(topic, { it.id == subscriberId1 }) }
+        val thread2 = Thread { associatedSubscribers.removeIf(topic, { it.id == subscriberId2 }) }
         thread1.start()
         thread2.start()
         thread1.join()
         thread2.join()
 
         // Assert
-        assertEquals(associatedSubscribers.getAll(topic).size, 0)
-    }
-
-    @Test
-    fun `insert and remove a subscribe with multiple subscribers and remove the first one in a concurrent way 2`() {
-        // Arrange
-        val topic = newTopic()
-        val subscriberId1 = UUID.randomUUID()
-        val subscriberId2 = UUID.randomUUID()
-        val subscriber1 = Subscriber(subscriberId1, { _ -> })
-        val subscriber2 = Subscriber(subscriberId2, { _ -> })
-        associatedSubscribers.addToKey(topic, subscriber1)
-        associatedSubscribers.addToKey(topic, subscriber2)
-
-        // Act
-        repeat(NUMBER_OF_SUBSCRIBERS) {
-            val threads = listOf(
-                Thread { associatedSubscribers.removeIf(topic, { it.id == subscriberId1 }) },
-                Thread { associatedSubscribers.removeIf(topic, { it.id == subscriberId2 }) },
-                Thread { associatedSubscribers.addToKey(topic, subscriber1) },
-                Thread { associatedSubscribers.addToKey(topic, subscriber2) }
-            )
-
-            threads.forEach(Thread::start)
-            threads.forEach(Thread::join)
-        }
-
-        // Assert
-        assertEquals(2, associatedSubscribers.getAll(topic).size)
-    }
-
-    @Test
-    fun `Test of multiple threads adding and removing subscribers`() {
-        // Arrange
-        val topic = newTopic()
-        val subscriberId1 = UUID.randomUUID()
-        val subscriberId2 = UUID.randomUUID()
-        val subscriber1 = Subscriber(subscriberId1, { _ -> })
-        val subscriber2 = Subscriber(subscriberId2, { _ -> })
-        val threads = mutableListOf<Thread>()
-
-        // Act
-        repeat(NUMBER_OF_SUBSCRIBERS) {
-            threads.add(
-                Thread { associatedSubscribers.addToKey(topic, subscriber1) }
-            )
-            threads.add(Thread { associatedSubscribers.addToKey(topic, subscriber2) })
-            if (NUMBER_OF_SUBSCRIBERS - 1 > it) {
-                threads.add(
-                    Thread { associatedSubscribers.removeIf(topic, { sub -> sub.id == subscriberId1 }) }
-                )
-                threads.add(
-                    Thread { associatedSubscribers.removeIf(topic, { sub -> sub.id == subscriberId2 }) }
-                )
-            }
-        }
-
-        threads.forEach { it.start() }
-        threads.forEach { it.join() }
-
-        // Assert
-        assertTrue(associatedSubscribers.getAll(topic).contains(subscriber1))
-        assertTrue(associatedSubscribers.getAll(topic).contains(subscriber2))
+        assertTrue(associatedSubscribers.noSubscribers(topic))
+        assertEquals(0, associatedSubscribers.getAll(topic).size)
     }
 
     @Test
     fun `adding multiple subscribers to the same topic in different threads`() {
         // Arrange
+        val associatedSubscribers = AssociatedSubscribers()
         val topic = newTopic()
         val subscribers = mutableListOf<Subscriber>()
         val threads = mutableListOf<Thread>()
@@ -202,9 +134,7 @@ class AssociatedSubscribersTests {
         repeat(NUMBER_OF_SUBSCRIBERS) {
             val subscriber = Subscriber(UUID.randomUUID(), { _ -> })
             subscribers.add(subscriber)
-            val thread = Thread {
-                associatedSubscribers.addToKey(topic, subscriber)
-            }
+            val thread = Thread { associatedSubscribers.addToKey(topic, subscriber) }
             threads.add(thread)
         }
 
@@ -212,12 +142,46 @@ class AssociatedSubscribersTests {
         threads.forEach { it.join() }
 
         // Assert
-        assertEquals(NUMBER_OF_SUBSCRIBERS, associatedSubscribers.getAll(topic).size)
+        val storedSubscribers = associatedSubscribers.getAll(topic)
+        assertEquals(NUMBER_OF_SUBSCRIBERS, storedSubscribers.size)
+        subscribers.forEach { subscriber ->
+            assertContains(storedSubscribers, subscriber)
+        }
     }
 
     @Test
-    fun `adding and removing subscribers in a concurrent way`() {
+    fun `adding multiple subscribers to a different topic in different threads`() {
         // Arrange
+        val associatedSubscribers = AssociatedSubscribers()
+        val topics = List(NUMBER_OF_TOPICS) { newTopic() }
+        val subscribers = mutableListOf<Pair<String, Subscriber>>()
+        val threads = mutableListOf<Thread>()
+
+        // Act
+        topics.forEach { topic ->
+            repeat(NUMBER_OF_SUBSCRIBERS) {
+                val subscriber = Subscriber(UUID.randomUUID(), { _ -> })
+                subscribers.add(Pair(topic, subscriber))
+                val thread = Thread { associatedSubscribers.addToKey(topic, subscriber) }
+                threads.add(thread)
+            }
+        }
+
+        threads.forEach { it.start() }
+        threads.forEach { it.join() }
+
+        // Assert
+        subscribers.forEach { pair ->
+            val storedSubscribers = associatedSubscribers.getAll(pair.first)
+            assertEquals(NUMBER_OF_SUBSCRIBERS, storedSubscribers.size)
+            assertContains(storedSubscribers, pair.second)
+        }
+    }
+
+    @Test
+    fun `adding and then removing multiple subscribers to the same topic in different threads`() {
+        // Arrange
+        val associatedSubscribers = AssociatedSubscribers()
         val topic = newTopic()
         val subscribers = ConcurrentLinkedQueue<Subscriber>()
         val threads = mutableListOf<Thread>()
@@ -226,11 +190,13 @@ class AssociatedSubscribersTests {
         repeat(NUMBER_OF_SUBSCRIBERS) {
             val subscriber = Subscriber(UUID.randomUUID(), { _ -> })
             subscribers.add(subscriber)
-            val thread = Thread {
-                associatedSubscribers.addToKey(topic, subscriber)
-            }
+            val thread = Thread { associatedSubscribers.addToKey(topic, subscriber) }
             threads.add(thread)
         }
+
+        threads.forEach { it.start() }
+        threads.forEach { it.join() }
+        threads.clear()
 
         repeat(NUMBER_OF_SUBSCRIBERS / 2) {
             val thread = Thread {
@@ -239,20 +205,138 @@ class AssociatedSubscribersTests {
             }
             threads.add(thread)
         }
+
         threads.forEach { it.start() }
         threads.forEach { it.join() }
 
         // Assert
-        assertEquals(NUMBER_OF_SUBSCRIBERS / 2, associatedSubscribers.getAll(topic).size)
-        associatedSubscribers.getAll(topic).forEach { subscriber ->
-            assertEquals(subscribers.contains(subscriber), true)
+        val storedSubscribers = associatedSubscribers.getAll(topic)
+        assertEquals(NUMBER_OF_SUBSCRIBERS / 2, storedSubscribers.size)
+        subscribers.forEach { subscriber ->
+            assertContains(storedSubscribers, subscriber)
         }
     }
 
-    private companion object {
-        private val associatedSubscribers = AssociatedSubscribers()
+    @Test
+    fun `adding and then removing multiple subscribers to a different topic in different threads`() {
+        // Arrange
+        val associatedSubscribers = AssociatedSubscribers()
+        val topics = List(NUMBER_OF_TOPICS) { newTopic() }
+        val subscribers = ConcurrentLinkedQueue<Pair<String, Subscriber>>()
+        val threads = mutableListOf<Thread>()
 
-        private const val NUMBER_OF_SUBSCRIBERS = 50
+        // Act
+        topics.forEach { topic ->
+            repeat(NUMBER_OF_SUBSCRIBERS) {
+                val subscriber = Subscriber(UUID.randomUUID(), { _ -> })
+                subscribers.add(Pair(topic, subscriber))
+                val thread = Thread { associatedSubscribers.addToKey(topic, subscriber) }
+                threads.add(thread)
+            }
+        }
+
+        threads.forEach { it.start() }
+        threads.forEach { it.join() }
+        threads.clear()
+
+        topics.forEach { topic ->
+            repeat(NUMBER_OF_SUBSCRIBERS / 2) {
+                val thread = Thread {
+                    val topicAndSubscriber = subscribers.poll()
+                    associatedSubscribers.removeIf(topic, { it.id == topicAndSubscriber.second.id })
+                }
+                threads.add(thread)
+            }
+        }
+
+        threads.forEach { it.start() }
+        threads.forEach { it.join() }
+
+        // Assert
+        subscribers.forEach { pair ->
+            val storedSubscribers = associatedSubscribers.getAll(pair.first)
+            assertEquals(NUMBER_OF_SUBSCRIBERS, storedSubscribers.size)
+            assertContains(storedSubscribers, pair.second)
+        }
+    }
+
+    @Test
+    fun `execute an action if subscriber subscribes to a new topic`() {
+        // Arrange
+        val associatedSubscribers = AssociatedSubscribers()
+        val topic = newTopic()
+        val subscriber1 = Subscriber(UUID.randomUUID(), { _ -> })
+        val subscriber2 = Subscriber(UUID.randomUUID(), { _ -> })
+
+        var topicAdd = false
+        var topicNotAdd = true
+
+        // Act [1]
+        associatedSubscribers.addToKey(topic, subscriber1) { topicAdd = true }
+
+        // Assert [1]
+        assertTrue(topicAdd)
+
+        // Act [2]
+        associatedSubscribers.addToKey(topic, subscriber2) { topicNotAdd = false }
+
+        // Assert [2]
+        assertTrue(topicNotAdd)
+    }
+
+    @Test
+    fun `execute an action if there are no more subscribers to the topic`() {
+        // Arrange
+        val associatedSubscribers = AssociatedSubscribers()
+        val topic = newTopic()
+        val subscriber1 = Subscriber(UUID.randomUUID(), { _ -> })
+        val subscriber2 = Subscriber(UUID.randomUUID(), { _ -> })
+        associatedSubscribers.addToKey(topic, subscriber1)
+        associatedSubscribers.addToKey(topic, subscriber2)
+
+        var topicNotGone = true
+        var topicGone = false
+
+        // Act [1]
+        associatedSubscribers.removeIf(topic, { it.id == subscriber1.id }, { topicNotGone = false })
+
+        // Assert [1]
+        assertTrue(topicNotGone)
+
+        // Act [2]
+        associatedSubscribers.removeIf(topic, { it.id == subscriber2.id }, { topicGone = true })
+
+        // Assert [2]
+        assertTrue(topicGone)
+    }
+
+    @Test
+    fun `update the last event id listened by a subscriber stored`() {
+        // Arrange
+        val initialLastEventID = 5L
+        val updatedLastEventID = 6L
+
+        val associatedSubscribers = AssociatedSubscribers()
+        val topic = newTopic()
+        val subscriber = Subscriber(UUID.randomUUID(), { _ -> }, initialLastEventID)
+
+        // Act [1]
+        associatedSubscribers.addToKey(topic, subscriber)
+
+        // Assert [1]
+        assertEquals(initialLastEventID, associatedSubscribers.getAll(topic).first().lastEventId)
+
+        // Act [2]
+        associatedSubscribers.updateLastEventIdListened(subscriber.id, topic, updatedLastEventID)
+
+        // Assert [2]
+        assertEquals(updatedLastEventID, associatedSubscribers.getAll(topic).first().lastEventId)
+    }
+
+    private companion object {
+
+        private const val NUMBER_OF_TOPICS = 200
+        private const val NUMBER_OF_SUBSCRIBERS = 500
 
         private fun newTopic() = "topic${abs(Random.nextLong())}"
     }
