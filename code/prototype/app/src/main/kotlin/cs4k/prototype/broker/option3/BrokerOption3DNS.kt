@@ -39,7 +39,7 @@ class BrokerOption3DNS : Broker {
             outboundSocket,
             INBOUND_PORT,
             BrokerSerializer.serializeEventToJson(
-                Event("", CHECK_DNS_AGAIN_ID, "")
+                Event("", ADD_MY_IP, "")
             ).toByteArray()
         )
     }
@@ -52,8 +52,8 @@ class BrokerOption3DNS : Broker {
                 inboundSocket.receive(receivedDatagramPacket)
                 val receivedMessage = String(receivedDatagramPacket.data.copyOfRange(0, receivedDatagramPacket.length))
                 val event = BrokerSerializer.deserializeEventFromJson(receivedMessage)
-                if(event.id == CHECK_DNS_AGAIN_ID) {
-                    connectedPeers.dnsLookup()
+                if(event.id == ADD_MY_IP) {
+                    connectedPeers.addIp(receivedDatagramPacket.address)
                 } else {
                     logger.info("new event topic '{}' event '{}", event.topic, event)
                     associatedSubscribers
@@ -103,7 +103,7 @@ class BrokerOption3DNS : Broker {
 
         private val SERVICE_NAME = Environment.getServiceName()
 
-        private const val CHECK_DNS_AGAIN_ID = -2L
+        private const val ADD_MY_IP = -2L
 
         private const val INBOUND_PORT = 6789
         private const val OUTBOUND_PORT = 6790

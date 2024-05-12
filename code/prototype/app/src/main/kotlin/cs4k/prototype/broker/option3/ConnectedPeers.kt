@@ -33,7 +33,8 @@ class ConnectedPeers(
         }
     }
 
-    fun dnsLookup() = lock.withLock {
+    private fun dnsLookup() = lock.withLock {
+        peers.clear()
         try {
             val ipAddresses = InetAddress.getAllByName(sharedService)
             for (ipAddress in ipAddresses) {
@@ -55,6 +56,10 @@ class ConnectedPeers(
             val datagramPacket = DatagramPacket(buf, buf.size, peerSocketAddress)
             socket.send(datagramPacket)
         }
+    }
+
+    fun addIp(address: InetAddress) = lock.withLock {
+        peers.add(address)
     }
 
     fun shutdown() = dnsLookupThread.interrupt()
