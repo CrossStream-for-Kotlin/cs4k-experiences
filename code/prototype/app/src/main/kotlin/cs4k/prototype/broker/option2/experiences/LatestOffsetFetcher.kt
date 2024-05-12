@@ -1,4 +1,4 @@
-package cs4k.prototype.broker.option2.rabbitmq
+package cs4k.prototype.broker.option2.experiences
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking

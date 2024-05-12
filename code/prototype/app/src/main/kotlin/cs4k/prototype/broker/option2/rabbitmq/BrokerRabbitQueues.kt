@@ -1,23 +1,22 @@
 package cs4k.prototype.broker.option2.rabbitmq
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.KotlinModule
+// import org.springframework.stereotype.Component
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.Channel
 import com.rabbitmq.client.ConnectionFactory
 import com.rabbitmq.client.DefaultConsumer
 import com.rabbitmq.client.Envelope
 import cs4k.prototype.broker.Broker
-import cs4k.prototype.broker.common.BrokerException.*
 import cs4k.prototype.broker.common.AssociatedSubscribers
+import cs4k.prototype.broker.common.BrokerException.BrokerLostConnectionException
+import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
 import cs4k.prototype.broker.common.Subscriber
 import org.slf4j.LoggerFactory
-//import org.springframework.stereotype.Component
 import java.io.IOException
-import java.util.*
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 // @Component
@@ -35,23 +34,19 @@ class BrokerRabbitQueues : Broker {
     // Name of exchange used to publish messages to.
     private val broadCastExchange = "cs4k-notifications"
 
-    //Indetify Broker instace
+    // Indetify Broker instace
     val brokerNumber = UUID.randomUUID().toString()
 
     // Consumer tag identifying the broker as consumer.
     private val queueTag = "cs4k-broker:" + UUID.randomUUID().toString()
 
-
     // Channel pool
     private val consumerChannelPool = ChannelPool(connectionFactory.newConnection())
     private val publisherChannelPool = ChannelPool(connectionFactory.newConnection())
 
-
-
     // Storage of most recent events sent by other brokers and set by this broker.
-    //private val latestTopicEvents = LatestTopicEvents()
+    // private val latestTopicEvents = LatestTopicEvents()
     val latestTopicEvents = LatestTopicEvents()
-
 
     // Retry condition.
     private val retryCondition: (throwable: Throwable) -> Boolean = { throwable ->
@@ -82,7 +77,7 @@ class BrokerRabbitQueues : Broker {
      */
     private fun thereIsIdConflict(latestEvent: Event, event: Event) =
         latestEvent.id == event.id &&
-                (latestEvent.message != event.message)
+            (latestEvent.message != event.message)
 
     private inner class ConsumerHandler(channel: Channel) : DefaultConsumer(channel) {
 
@@ -100,7 +95,8 @@ class BrokerRabbitQueues : Broker {
             if (event.message == adminEvent) {
                 if (latestEvent != null) {
                     channel.basicPublish(
-                        broadCastExchange, latestEvent.topic,
+                        broadCastExchange,
+                        latestEvent.topic,
                         null,
                         BrokerSerializer.serializeEventToJson(latestEvent).toByteArray()
                     )
@@ -133,7 +129,6 @@ class BrokerRabbitQueues : Broker {
                     processMessage(recenteEvent)
                     logger.info("older event received, thrown away")
                 }
-
 
                 /*latestEvent != null && thereIsIdConflict(latestEvent, event) -> {
                     val recentEvent = event.copy(id = event.id + 1)
@@ -268,7 +263,7 @@ class BrokerRabbitQueues : Broker {
      * @throws BrokerTurnOffException If the broker is turned off.
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
-   override fun publish(topic: String, message: String, isLastMessage: Boolean) {
+    override fun publish(topic: String, message: String, isLastMessage: Boolean) {
         if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
         logger.info("publishing message to topic '{} with message {} in broker {}'", topic, message, brokerNumber)
         bindTopicToQueue(topic)
@@ -295,7 +290,12 @@ class BrokerRabbitQueues : Broker {
         try {
             val requestEvent = createAdminEvent(topic)
             val responseChannel = consumerChannelPool.getChannel()
-            responseChannel.basicPublish(broadCastExchange, topic, null, BrokerSerializer.serializeEventToJson(requestEvent).toByteArray())
+            responseChannel.basicPublish(
+                broadCastExchange,
+                topic,
+                null,
+                BrokerSerializer.serializeEventToJson(requestEvent).toByteArray()
+            )
             consumerChannelPool.stopUsingChannel(responseChannel)
         } catch (e: Exception) {
             logger.error("Error requesting latest event", e)
@@ -363,9 +363,14 @@ class BrokerRabbitQueues : Broker {
                 val channel = publisherChannelPool.getChannel()
                 val id = latestTopicEvents.getNextEventId(topic)
                 val event = Event(topic, id, message, isLastMessage)
-                //latestTopicEvents.setLatestSentEvent(topic, event)
+                // latestTopicEvents.setLatestSentEvent(topic, event)
                 bindTopicToQueue(topic)
-                channel.basicPublish(broadCastExchange, topic, null, BrokerSerializer.serializeEventToJson(event).toByteArray())
+                channel.basicPublish(
+                    broadCastExchange,
+                    topic,
+                    null,
+                    BrokerSerializer.serializeEventToJson(event).toByteArray()
+                )
                 logger.info("Message successfully published to topic: $topic with message: $message")
                 publisherChannelPool.stopUsingChannel(channel)
             } catch (e: Exception) {
@@ -384,9 +389,14 @@ class BrokerRabbitQueues : Broker {
         retryExecutor.execute({ BrokerLostConnectionException() }, {
             try {
                 val channel = publisherChannelPool.getChannel()
-                //latestTopicEvents.setLatestSentEvent(event.topic, event)
+                // latestTopicEvents.setLatestSentEvent(event.topic, event)
                 bindTopicToQueue(event.topic)
-                channel.basicPublish(broadCastExchange, event.topic, null, BrokerSerializer.serializeEventToJson(event).toByteArray())
+                channel.basicPublish(
+                    broadCastExchange,
+                    event.topic,
+                    null,
+                    BrokerSerializer.serializeEventToJson(event).toByteArray()
+                )
                 publisherChannelPool.stopUsingChannel(channel)
             } catch (e: Exception) {
                 logger.error("Error publishing message", e)
@@ -405,4 +415,3 @@ class BrokerRabbitQueues : Broker {
         }
     }
 }
-

@@ -57,6 +57,7 @@ class LatestTopicEvents {
     private val lock = ReentrantLock()
 
     private val mapAllEventsFromTopic = HashMap<String, MutableList<Event>>()
+
     /**
      * Obtain the latest topic. When both sent and received are defined, received is prioritized.
      * @param topic The topic of the event desired.
@@ -92,6 +93,7 @@ class LatestTopicEvents {
     fun getAllReceivedEvents(topic: String): List<Event> = lock.withLock {
         mapAllEventsFromTopic[topic] ?: emptyList()
     }
+
     /**
      * Add a event to the list of events from a topic.
      * wihtout repetions of events

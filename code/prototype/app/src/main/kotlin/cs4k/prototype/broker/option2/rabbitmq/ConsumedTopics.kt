@@ -3,7 +3,6 @@ package cs4k.prototype.broker.option2.rabbitmq
 import com.rabbitmq.client.Channel
 import cs4k.prototype.broker.common.Event
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
@@ -22,7 +21,6 @@ class ConsumedTopics {
      * @param payload The message of the event joined with the indicator if the message is the last one of the topic.
      */
     private class EventInfo(
-        val id: Long,
         val payload: String
     ) {
         /**
@@ -30,19 +28,35 @@ class ConsumedTopics {
          * @param event The complete event.
          */
         constructor(event: Event) :
-            this(event.id, listOf(event.message, event.isLast.toString()).joinToString(";"))
+            this(listOf(event.message, event.isLast.toString()).joinToString(";"))
 
         /**
          * Converting the information of the event into an actual event to notify a subscriber.
          * @param topic The topic of the event.
          * @return The actual event.
          */
-        fun toEvent(topic: String): Event {
+        fun toEvent(id: Long, topic: String): Event {
             val splitPayload = payload.split(";")
             val message = splitPayload.dropLast(1).joinToString(";")
             val isLast = splitPayload.last().toBoolean()
             return Event(topic, id, message, isLast)
         }
+    }
+
+    data class LatestMessageAccessInfo(
+        val offset: Long,
+        val lastEventId: Long
+    )
+
+    fun getLatestMessageAccessInfo(topic: String): LatestMessageAccessInfo? = lock.withLock {
+        val consumeInfo = topicToConsumeInfo[topic] ?: return@withLock null
+        LatestMessageAccessInfo(consumeInfo.lastOffset ?: 0L, consumeInfo.latestEventId ?: 0L)
+    }
+
+    fun setLatestMessageAccessInfoIfLatest(topic: String, offset: Long, lastEventId: Long) = lock.withLock {
+        val consumeInfo = topicToConsumeInfo[topic] ?: ConsumeInfo()
+        if (consumeInfo.lastOffset != null && consumeInfo.lastOffset > offset) return@withLock
+        topicToConsumeInfo[topic] = consumeInfo.copy(lastOffset = offset, latestEventId = lastEventId)
     }
 
     /**
@@ -57,6 +71,7 @@ class ConsumedTopics {
         val channel: Channel? = null,
         val lastOffset: Long? = null,
         val latestEvent: EventInfo? = null,
+        val latestEventId: Long? = null,
         val isBeingAnalyzed: Boolean = false,
         val lock: Lock = ReentrantLock()
     )
@@ -166,7 +181,7 @@ class ConsumedTopics {
      * @return The latest event of the topic.
      */
     fun getLatestEvent(topic: String): Event? = lock.withLock {
-        topicToConsumeInfo[topic]?.latestEvent?.toEvent(topic)
+        topicToConsumeInfo[topic]?.let { it.latestEvent?.toEvent(it.latestEventId ?: 0L, topic) }
     }
 
     /**
@@ -178,7 +193,7 @@ class ConsumedTopics {
      */
     fun createAndSetLatestEvent(topic: String, message: String, isLast: Boolean = false) = lock.withLock {
         val consumeInfo = topicToConsumeInfo[topic] ?: ConsumeInfo()
-        val id = consumeInfo.latestEvent?.id?.plus(1L) ?: 0L
+        val id = consumeInfo.latestEventId?.plus(1L) ?: 0L
         val recentEvent = Event(topic, id, message, isLast)
         topicToConsumeInfo[topic] = consumeInfo.copy(latestEvent = EventInfo(recentEvent))
         recentEvent
@@ -191,7 +206,7 @@ class ConsumedTopics {
      * @param isLast If the event in question is the last of a given topic.
      * @return The newly created event.
      */
-    fun createAndSetLatestEvent(topic: String, id: Long,  message: String, isLast: Boolean = false) = lock.withLock {
+    fun createAndSetLatestEvent(topic: String, id: Long, message: String, isLast: Boolean = false) = lock.withLock {
         val consumeInfo = topicToConsumeInfo[topic] ?: ConsumeInfo()
         val recentEvent = Event(topic, id, message, isLast)
         topicToConsumeInfo[topic] = consumeInfo.copy(latestEvent = EventInfo(recentEvent))
@@ -206,7 +221,7 @@ class ConsumedTopics {
      * @param fetchOffset Suspend function that is able to externally fetch offset.
      * @return The latest offset available. Will return 0 if cancelled.
      */
-    private suspend fun getOffset(topic: String, scope: CoroutineScope, fetchOffset: suspend (String) -> Long?): Long? {
+    private suspend fun getOffset(topic: String, scope: CoroutineScope, fetchOffset: (String) -> Unit): Long? {
         var myRequest: OffsetRequest? = null
         var offset: Long? = null
         var needsFetching = false
@@ -228,7 +243,7 @@ class ConsumedTopics {
                     }
                 }
                 if (needsFetching) {
-                    scope.launch { fetchOffset(topic)?.let { setOffset(topic, it) } }
+                    fetchOffset(topic)
                 }
             }
         } catch (e: CancellationException) {
@@ -251,7 +266,7 @@ class ConsumedTopics {
      * @param timeout Maximum amount of wait tine.
      * @return The latest offset, if able to be obtained.
      */
-    fun getOffset(topic: String, timeout: Duration = Duration.INFINITE, fetchOffset: suspend (String) -> Long?): Long? {
+    fun getOffset(topic: String, timeout: Duration = Duration.INFINITE, fetchOffset: (String) -> Unit): Long? {
         return runBlocking {
             var result: Long? = null
             try {

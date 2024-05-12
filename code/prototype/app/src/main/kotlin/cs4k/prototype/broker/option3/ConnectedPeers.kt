@@ -40,8 +40,9 @@ class ConnectedPeers(
             for (ipAddress in ipAddresses) {
                 when (ipAddress) {
                     is Inet4Address ->
-                        if (ipAddress != selfInetAddress)
+                        if (ipAddress != selfInetAddress) {
                             peers.add(ipAddress)
+                        }
                 }
             }
             logger.info("lookup dns, peers -> {}", peers.joinToString(" , "))
@@ -67,5 +68,4 @@ class ConnectedPeers(
     private companion object {
         private val logger = LoggerFactory.getLogger(ConnectedPeers::class.java)
     }
-
 }

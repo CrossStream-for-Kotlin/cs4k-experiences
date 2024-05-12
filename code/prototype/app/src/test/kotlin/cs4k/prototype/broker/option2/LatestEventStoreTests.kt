@@ -1,6 +1,6 @@
 package cs4k.prototype.broker.option2
 
-import cs4k.prototype.broker.option2.rabbitmq.LatestEventStore
+import cs4k.prototype.broker.option2.experiences.LatestEventStore
 import org.junit.jupiter.api.Test
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.abs
@@ -12,7 +12,6 @@ class LatestEventStoreTests {
 
     @Test
     fun `simple set and get`() {
-
         // Assemble
         val topic = newRandomTopic()
         val message = newRandomMessage()
@@ -26,12 +25,10 @@ class LatestEventStoreTests {
         assertEquals(topic, event?.topic)
         assertEquals(message, event?.message)
         assertEquals(0, event?.id)
-
     }
 
     @Test
     fun `starting get should be null`() {
-
         // Assemble
         val store = LatestEventStore()
 
@@ -40,12 +37,10 @@ class LatestEventStoreTests {
 
         // Assert
         assertEquals(null, event)
-
     }
 
     @Test
     fun `several sets with the same topic should create events with sequencial ids`() {
-
         // Assemble
         val topic = newRandomTopic()
         val store = LatestEventStore()
@@ -63,12 +58,10 @@ class LatestEventStoreTests {
             assertEquals(message, event?.message)
             assertEquals(it.toLong(), event?.id)
         }
-
     }
 
     @Test
     fun `several sets with different topics and removing all should leave store empty`() {
-
         // Assemble
         val threads = ConcurrentLinkedQueue<Thread>()
         val failures = ConcurrentLinkedQueue<AssertionError>()
@@ -118,7 +111,6 @@ class LatestEventStoreTests {
         topics.forEach {
             assertNull(store.getLatestEvent(it))
         }
-
     }
 
     companion object {
@@ -129,5 +121,4 @@ class LatestEventStoreTests {
         private const val NUMBER_OF_TOPICS = 5
         private const val NUMBER_OF_MESSAGES = 100
     }
-
 }

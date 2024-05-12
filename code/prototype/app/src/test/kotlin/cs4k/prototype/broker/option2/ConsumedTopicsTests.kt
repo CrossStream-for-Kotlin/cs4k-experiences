@@ -12,7 +12,6 @@ class ConsumedTopicsTests {
 
     @Test
     fun `event - simple set and get`() {
-
         // Assemble
         val topic = newRandomTopic()
         val message = newRandomMessage()
@@ -25,12 +24,10 @@ class ConsumedTopicsTests {
         assertEquals(topic, event?.topic)
         assertEquals(message, event?.message)
         assertEquals(0, event?.id)
-
     }
 
     @Test
     fun `event - starting get should be null`() {
-
         // Assemble
         val store = ConsumedTopics()
 
@@ -39,12 +36,10 @@ class ConsumedTopicsTests {
 
         // Assert
         assertEquals(null, event)
-
     }
 
     @Test
     fun `event - several sets with the same topic should create events with sequencial ids`() {
-
         // Assemble
         val topic = newRandomTopic()
         val store = ConsumedTopics()
@@ -62,12 +57,10 @@ class ConsumedTopicsTests {
             assertEquals(message, event?.message)
             assertEquals(it.toLong(), event?.id)
         }
-
     }
 
     @Test
     fun `event - several sets with different topics and removing all should leave store empty`() {
-
         // Assemble
         val threads = ConcurrentLinkedQueue<Thread>()
         val failures = ConcurrentLinkedQueue<AssertionError>()
@@ -117,12 +110,10 @@ class ConsumedTopicsTests {
         topics.forEach {
             assertNull(store.getLatestEvent(it))
         }
-
     }
 
     @Test
     fun `offset - simple set and get`() {
-
         // Assemble
         val topic = newRandomTopic()
         val message = generateRandom()
@@ -133,12 +124,10 @@ class ConsumedTopicsTests {
 
         // Assert
         assertEquals(message, offset)
-
     }
 
     @Test
     fun `offset - starting get should be null`() {
-
         // Assemble
         val store = ConsumedTopics()
 
@@ -147,16 +136,14 @@ class ConsumedTopicsTests {
 
         // Assert
         assertEquals(null, event)
-
     }
 
     @Test
     fun `offset - first passive waiting get should set offset`() {
-
         // Assemble
         val store = ConsumedTopics()
         val offset = generateRandom()
-        val offsetSetter = { _: String -> offset }
+        val offsetSetter = { _: String -> store.setOffset(topic = "", offset) }
 
         // Act
         val fetchedOffset = store.getOffset("", fetchOffset = offsetSetter)
@@ -173,5 +160,4 @@ class ConsumedTopicsTests {
         private const val NUMBER_OF_TOPICS = 5
         private const val NUMBER_OF_MESSAGES = 100
     }
-
 }

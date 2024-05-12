@@ -31,7 +31,7 @@ class RetryExecutor(
             try {
                 return action()
             } catch (e: Exception) {
-                if (!isToRetry(retryCondition, e)) return Unit as T     // throw exception
+                if (!isToRetry(retryCondition, e)) return Unit as T // throw exception
             }
         }
         throw exception()
@@ -55,7 +55,7 @@ class RetryExecutor(
             try {
                 return action()
             } catch (e: Exception) {
-                if (!isToRetry(retryCondition, e)) return Unit as T     // throw exception
+                if (!isToRetry(retryCondition, e)) return Unit as T // throw exception
             }
         }
         throw exception()

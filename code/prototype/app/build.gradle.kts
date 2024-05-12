@@ -180,7 +180,6 @@ task<Exec>("prototypeOption2RabbitComposeDown") {
     commandLine("docker-compose", "-f", "../docker-compose-prototype-option2-rabbit.yaml", "down")
 }
 
-
 task<Exec>("prototypeOption2RedisComposeUp") {
     commandLine(
         "docker-compose",

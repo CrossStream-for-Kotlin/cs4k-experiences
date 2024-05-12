@@ -52,7 +52,7 @@ class BrokerOption3DNS : Broker {
                 inboundSocket.receive(receivedDatagramPacket)
                 val receivedMessage = String(receivedDatagramPacket.data.copyOfRange(0, receivedDatagramPacket.length))
                 val event = BrokerSerializer.deserializeEventFromJson(receivedMessage)
-                if(event.id == ADD_MY_IP) {
+                if (event.id == ADD_MY_IP) {
                     connectedPeers.addIp(receivedDatagramPacket.address)
                 } else {
                     logger.info("new event topic '{}' event '{}", event.topic, event)

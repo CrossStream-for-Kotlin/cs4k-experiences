@@ -1,8 +1,9 @@
-package cs4k.prototype.broker.option2.rabbitmq
+package cs4k.prototype.broker.option2.experiences
 
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.Address
 import com.rabbitmq.client.Channel
+import com.rabbitmq.client.Connection
 import com.rabbitmq.client.ConnectionFactory
 import com.rabbitmq.client.DefaultConsumer
 import com.rabbitmq.client.Envelope
@@ -13,12 +14,23 @@ import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
 import cs4k.prototype.broker.common.Subscriber
+import cs4k.prototype.broker.option2.rabbitmq.ChannelPool
 import org.slf4j.LoggerFactory
 import java.io.IOException
-import java.util.*
+import java.util.Collections
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 // @Component
+/**
+ * Depreciated, because:
+ *  - History of messages between different topics may vary in size depending on how recent they are. Might be a
+ *  problem if one were to make a version with history.
+ *  - With only one stream without filtering, brokers would have to send all ids and offsets they know of in regard
+ *  to latest events, something that may occupy a gigantic amount of bandwidth.
+ *
+ *  - Event IDs would not be matching otherwise.
+ */
 class BrokerRabbitStreamsOneConsumer : Broker {
     // Association between topics and subscribers lists.
     private val associatedSubscribers = AssociatedSubscribers()
@@ -27,8 +39,8 @@ class BrokerRabbitStreamsOneConsumer : Broker {
     private val retryExecutor = RetryExecutor()
 
     // Channel pool
-    private val consumingChannelPool = ChannelPool(connectionFactory.newConnection(clusterAddresses))
-    private val publishingChannelPool = ChannelPool(connectionFactory.newConnection(clusterAddresses))
+    private val consumingChannelPool = ChannelPool(createConnection())
+    private val publishingChannelPool = ChannelPool(createConnection())
 
     // Name of stream used to publish messages to.
     private val streamName = "cs4k-notifications"
@@ -153,7 +165,7 @@ class BrokerRabbitStreamsOneConsumer : Broker {
     private fun unsubscribe(topic: String, subscriber: Subscriber) {
         associatedSubscribers.removeIf(
             topic,
-            { sub: Subscriber -> sub.id.toString() == subscriber.id.toString() },
+            { sub: Subscriber -> sub.id.toString() == subscriber.id.toString() }
         )
         logger.info("unsubscribe topic '{}' id '{}", topic, subscriber.id)
     }
@@ -236,6 +248,15 @@ class BrokerRabbitStreamsOneConsumer : Broker {
         ).map { address ->
             val hostAndPort = address.split(":")
             Address(hostAndPort.dropLast(1).joinToString(":"), hostAndPort.last().toInt())
+        }
+
+        private fun createSingleConnection() = createFactory().newConnection()
+
+        private fun createClusterConnection() = createFactory().newConnection(clusterAddresses)
+
+        private fun createConnection(): Connection {
+            // return createSingleConnection()
+            return createClusterConnection()
         }
 
         // Connection factory used to make connections to message broker.
