@@ -56,6 +56,7 @@ class LatestTopicEvents {
     // Lock to ensure thread safety.
     private val lock = ReentrantLock()
 
+    // Map that associates topics with all events.
     private val mapAllEventsFromTopic = HashMap<String, MutableList<Event>>()
 
     /**
@@ -146,14 +147,10 @@ class LatestTopicEvents {
      */
     private fun setEvent(topic: String, events: LatestEvents) = map.set(topic, events)
 
-    fun showallEvents(): List<Event?> {
-        lock.withLock {
-            return map.map { (topic, events) ->
-                getLatestEvent(topic)
-            }.filterNotNull()
-        }
-    }
-
+    /**
+     * Obtain all topics and their latest events.
+     * @return The list of topics and their latest events.
+     */
     fun getAllTopicsAndEvents(): List<Pair<String, Event?>> {
         lock.withLock {
             return map.map { (topic, events) ->

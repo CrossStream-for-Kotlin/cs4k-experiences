@@ -3,7 +3,8 @@ package cs4k.prototype.broker
 import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.Event
 
-import cs4k.prototype.broker.option2.rabbitmq.BrokerRabbitQueues
+import cs4k.prototype.broker.option2.rabbitmq.BrokerRabbitDirectExchange
+import cs4k.prototype.broker.option2.rabbitmq.BrokerRabbitFanoutExchange
 import org.junit.jupiter.api.AfterAll
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
@@ -491,14 +492,12 @@ class BrokerTests {
         val latch = CountDownLatch(2)
 
 
-        val brokerInstance1 = BrokerRabbitQueues()
-        brokerInstance1.publish(topic, message)
+        getRandomBrokerInstance().publish(topic, message)
 
         Thread.sleep(5000)
 
         // Act
-        val brokerInstance2 = BrokerRabbitQueues()
-        brokerInstance2.subscribe(topic) { event ->
+        getRandomBrokerInstance().subscribe(topic) { event ->
             // Assert
             eventReceived = message
             assertEquals(topic, event.topic)
@@ -523,7 +522,7 @@ class BrokerTests {
             newRandomTopic() to  newRandomMessage()
         }
         topicsAndMessage.forEach {
-            BrokerRabbitQueues().publish(it.key, it.value)
+            getRandomBrokerInstance().publish(it.key, it.value)
         }
 
 
@@ -559,7 +558,6 @@ class BrokerTests {
         }
     }
 
-    //Não passa
     @Test
     fun `stress test with simultaneous publication of n messages to 1 topic with several broker instances involved`() {
         // Arrange
@@ -618,77 +616,6 @@ class BrokerTests {
         unsubscribes.forEach { unsubscribe -> unsubscribe() }
     }
 
-    //duplicete
-    @Test
-    fun `stress test with simultaneous publication of n messages to 1 topic with several broker instances involved duplicated`() {
-        // Arrange
-        val topic = newRandomTopic()
-        val nMessages = 100
-        val messages = List(nMessages) { newRandomMessage() }
-        val nSubs = 50
-        val latch = CountDownLatch(nMessages * nSubs)
-        val unsubscribes = mutableListOf<() -> Unit>()
-        val threads = ConcurrentLinkedQueue<Thread>()
-        val errors = ConcurrentLinkedQueue<Exception>()
-        val eventsReceived = ConcurrentLinkedQueue<Event>()
-        var brokers = mutableListOf<BrokerRabbitQueues>()
-        repeat(nSubs) {
-            val broker = getRandomBrokerInstance()
-            brokers.add(broker)
-            val unsubscribe = broker.subscribe(
-                topic = topic,
-                handler = { event ->
-                    eventsReceived.add(event)
-                    latch.countDown()
-                }
-            )
-            unsubscribes.add(unsubscribe)
-        }
-
-        // Act
-        messages.forEach { message ->
-            val th = Thread {
-                try {
-                    getRandomBrokerInstance().publish(
-                        topic = topic,
-                        message = message
-                    )
-                } catch (e: Exception) {
-                    errors.add(e)
-                }
-            }
-            th.start().also { threads.add(th) }
-        }
-        threads.forEach { it.join() }
-
-        // Assert
-        val reachedZero = latch.await(SUBSCRIBE_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
-        assertTrue(reachedZero)
-        //filtra todos os eventos que nao tem repetios ou sej aifca so com eventos repetidos
-        val ex =
-            eventsReceived.filter { event -> eventsReceived.count { it.message == event.message } > 3 }.firstOrNull()
-        //organizar ps recevied events por id
-        //eventsReceived.sortedBy { it.id }.forEach { println("Evento: $it" ) }
-        //println("Evento Re+petido ${ex}")
-        assertEquals(nSubs * nMessages, eventsReceived.size)
-        //vai buscar o broker que tem mais evento recebidos
-        //var the = brokers.filter { it.latestTopicEvents.getAllReceivedEvents(topic).size > nMessages }.firstOrNull()
-        //the?.latestTopicEvents?.getAllReceivedEvents(topic)?.forEach { println("$it in broke ${the?.brokerNumber}" ) }
-        val eventsReceivedSet = eventsReceived
-            .toSet()
-            .map { event -> event }
-
-        eventsReceivedSet.forEach { println("$it") }
-        assertTrue(eventsReceivedSet.map { it.message }.containsAll(messages))
-        assertEquals(nMessages, eventsReceivedSet.size)
-
-        if (errors.isNotEmpty()) throw errors.peek()
-
-        // Clean Up
-        unsubscribes.forEach { unsubscribe -> unsubscribe() }
-    }
-
-    //Não passa
     @Test
     fun `stress test with simultaneous publication of n messages to n topics with several broker instances involved`() {
         // Arrange
@@ -1279,7 +1206,8 @@ class BrokerTests {
         // BrokerRedis()
 
             // - RabbitMQ
-            BrokerRabbitQueues()
+            BrokerRabbitDirectExchange()
+        //BrokerRabbitFanoutExchange()
         // BrokerRabbitStreams()
 
 

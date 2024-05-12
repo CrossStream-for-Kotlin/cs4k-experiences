@@ -43,6 +43,7 @@ class ConnectedPeers(
                         if (ipAddress != selfInetAddress) {
                             peers.add(ipAddress)
                         }
+                    is InetAddress -> logger.info("not ipv4 address -> {}", ipAddress)
                 }
             }
             logger.info("lookup dns, peers -> {}", peers.joinToString(" , "))
