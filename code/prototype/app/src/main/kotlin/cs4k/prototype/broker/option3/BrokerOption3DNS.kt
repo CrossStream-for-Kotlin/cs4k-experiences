@@ -28,9 +28,6 @@ class BrokerOption3DNS : Broker {
     private val outboundInetSocketAddress = InetSocketAddress(inetAddress, OUTBOUND_PORT)
     private val outboundSocket = DatagramSocket(outboundInetSocketAddress)
 
-    private val checkInInetSocketAddress = InetSocketAddress(inetAddress, CHECKIN_PORT)
-    private val checkInSocket = DatagramSocket(checkInInetSocketAddress)
-
     private val associatedSubscribers = AssociatedSubscribers()
     private val connectedPeers = ConnectedPeers(inetAddress, SERVICE_NAME, INBOUND_PORT)
 
@@ -38,10 +35,11 @@ class BrokerOption3DNS : Broker {
         thread {
             listenSocket()
         }
-        connectedPeers.send(checkInSocket, CHECKIN_PORT, "new node".toByteArray())
-        thread {
-            listenNewBrokers()
-        }
+        connectedPeers.send(
+            outboundSocket,
+            INBOUND_PORT,
+            BrokerSerializer.serializeEventToJson(Event("", CHECK_DNS_AGAIN_ID, "")).toByteArray()
+        )
     }
 
     private fun listenSocket() {
@@ -52,29 +50,17 @@ class BrokerOption3DNS : Broker {
                 inboundSocket.receive(receivedDatagramPacket)
                 val receivedMessage = String(receivedDatagramPacket.data.copyOfRange(0, receivedDatagramPacket.length))
                 val event = BrokerSerializer.deserializeEventFromJson(receivedMessage)
-                logger.info("new event topic '{}' event '{}", event.topic, event)
-                associatedSubscribers
-                    .getAll(event.topic)
-                    .forEach { subscriber -> subscriber.handler(event) }
+                if(event.id == CHECK_DNS_AGAIN_ID) {
+                    connectedPeers.dnsLookup()
+                } else {
+                    logger.info("new event topic '{}' event '{}", event.topic, event)
+                    associatedSubscribers
+                        .getAll(event.topic)
+                        .forEach { subscriber -> subscriber.handler(event) }
+                }
             } catch (e: SocketException) {
                 logger.info("[ERROR]: {}", e.stackTrace)
                 inboundSocket.close()
-                break
-            }
-        }
-    }
-
-    private fun listenNewBrokers() {
-        logger.info("new brokers: start reading socket ip '{}' port '{}'", checkInSocket.localAddress, CHECKIN_PORT)
-        while (!checkInSocket.isClosed) {
-            try {
-                val receivedDatagramPacket = DatagramPacket(inboundBuffer, inboundBuffer.size)
-                inboundSocket.receive(receivedDatagramPacket)
-                logger.info("new broker detected")
-                connectedPeers.dnsLookup()
-            } catch (e: SocketException) {
-                logger.info("[ERROR]: {}", e.stackTrace)
-                checkInSocket.close()
                 break
             }
         }
@@ -115,9 +101,10 @@ class BrokerOption3DNS : Broker {
 
         private val SERVICE_NAME = Environment.getServiceName()
 
+        private const val CHECK_DNS_AGAIN_ID = -2L
+
         private const val INBOUND_PORT = 6789
         private const val OUTBOUND_PORT = 6790
-        private const val CHECKIN_PORT = 6791
 
         private const val INBOUND_BUFFER_SIZE = 2048
     }
