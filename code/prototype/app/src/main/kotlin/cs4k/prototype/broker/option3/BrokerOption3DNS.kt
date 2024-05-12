@@ -38,7 +38,9 @@ class BrokerOption3DNS : Broker {
         connectedPeers.send(
             outboundSocket,
             INBOUND_PORT,
-            BrokerSerializer.serializeEventToJson(Event("", CHECK_DNS_AGAIN_ID, "")).toByteArray()
+            BrokerSerializer.serializeEventToJson(
+                Event("", CHECK_DNS_AGAIN_ID, "")
+            ).toByteArray()
         )
     }
 
