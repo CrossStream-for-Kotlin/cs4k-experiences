@@ -2,7 +2,8 @@ package cs4k.prototype.services
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
-import cs4k.prototype.broker.option3.BrokerOption3
+import cs4k.prototype.broker.option3.BrokerOption3DNS
+import cs4k.prototype.broker.option3.BrokerOption3Multicast
 import cs4k.prototype.domain.Game
 import cs4k.prototype.domain.GameInfo
 import cs4k.prototype.http.models.output.GameOutputModel
@@ -18,7 +19,7 @@ import kotlin.concurrent.withLock
 @Component
 class TicTacToeService(
     val ticTacToeRepository: TicTacToeRepository,
-    val broker: BrokerOption3
+    val broker: BrokerOption3DNS
 ) {
 
     private val sseEmittersToKeepAlive = mutableListOf<SseEmitter>()
