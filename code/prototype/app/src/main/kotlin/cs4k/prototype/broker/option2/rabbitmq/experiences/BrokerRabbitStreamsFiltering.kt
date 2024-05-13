@@ -1,4 +1,4 @@
-package cs4k.prototype.broker.option2.experiences
+package cs4k.prototype.broker.option2.rabbitmq.experiences
 
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.Address

@@ -1,6 +1,6 @@
 package cs4k.prototype.broker.option2
 
-import cs4k.prototype.broker.option2.experiences.LatestEventStore
+import cs4k.prototype.broker.option2.rabbitmq.experiences.LatestEventStore
 import org.junit.jupiter.api.Test
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.abs
