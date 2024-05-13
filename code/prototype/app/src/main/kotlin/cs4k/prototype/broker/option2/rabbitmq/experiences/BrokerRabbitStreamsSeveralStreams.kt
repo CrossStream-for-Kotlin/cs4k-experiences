@@ -39,6 +39,9 @@ import kotlin.time.Duration.Companion.milliseconds
  * Discontinued, because:
  *  - Consuming from several streams requires several channels, which in turn uses up several resources.
  */
+// - RabbitMQ Java client
+// - RabbitMQ Streams (n streams - n consumers)
+// - Support for RabbitMQ Cluster
 class BrokerRabbitStreamsSeveralStreams(
     private val subscribeDelay: Duration = 250.milliseconds,
     private val withholdTimeInMillis: Long = 5000

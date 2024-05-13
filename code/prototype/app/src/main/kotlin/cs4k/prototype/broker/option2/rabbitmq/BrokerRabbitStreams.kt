@@ -23,16 +23,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
-// @Component
-/**
- * Depreciated, because:
- *  - History of messages between different topics may vary in size depending on how recent they are. Might be a
- *  problem if one were to make a version with history.
- *  - With only one stream without filtering, brokers would have to send all ids and offsets they know of in regard
- *  to latest events, something that may occupy a gigantic amount of bandwidth.
- *
- *  - Event IDs would not be matching otherwise.
- */
+// - RabbitMQ Java client
+// - RabbitMQ Streams (1 stream - 1 consumer)
+// - Support for RabbitMQ Cluster
 class BrokerRabbitStreams(
     private val subscribeDelay: Duration = 250.milliseconds
 ) : Broker {
