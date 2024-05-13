@@ -10,6 +10,14 @@ import java.net.InetSocketAddress
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
+/**
+ * Container where this node's peers are stored. Periodically, or when instructed, will do DNS lookups to find its peers.
+ * When a new node is announced, its IP will be added here.
+ * @property selfInetAddress The IP address of this node, used to filter out its own IP from its peers.
+ * @property sharedService The Docker compose service name, used to do DNS queries.
+ * @property sharedPort The inbound port shared by all nodes,
+ * @property dnsExpiresOn The expiration time, in millis, of the results of the DNS query.
+ */
 class ConnectedPeers(
     private val selfInetAddress: InetAddress,
     private val sharedService: String,
@@ -17,14 +25,17 @@ class ConnectedPeers(
     private val dnsExpiresOn: Long = 5000
 ) {
 
-    private val peers: MutableList<InetAddress> = mutableListOf()
+    // List of IP addresses and sockets of the node's peers.
+    private val peers: HashSet<InetSocketAddress> = hashSetOf()
 
+    // Lock to control concurrency.
     private val lock = ReentrantLock()
 
     init {
         dnsLookup()
     }
 
+    // Thread that periodically does DNS queries.
     private val dnsLookupThread = Thread {
         while (true) {
             sleep(dnsExpiresOn)
@@ -33,6 +44,9 @@ class ConnectedPeers(
         }
     }
 
+    /**
+     * Makes a DNS query and adds all IP addresses received as peers.
+     */
     private fun dnsLookup() = lock.withLock {
         peers.clear()
         try {
@@ -41,7 +55,7 @@ class ConnectedPeers(
                 when (ipAddress) {
                     is Inet4Address ->
                         if (ipAddress != selfInetAddress) {
-                            peers.add(ipAddress)
+                            peers.add(InetSocketAddress(ipAddress, sharedPort))
                         }
                     is InetAddress -> logger.info("not ipv4 address -> {}", ipAddress)
                 }
@@ -52,19 +66,33 @@ class ConnectedPeers(
         }
     }
 
-    fun send(socket: DatagramSocket, port: Int, buf: ByteArray) = lock.withLock {
+    /**
+     * Sending the information to all peers.
+     * @param socket Where the information will be sent to.
+     * @param buf The payload of the datagram sent.
+     */
+    fun send(socket: DatagramSocket, buf: ByteArray) = lock.withLock {
         for (peer in peers) {
-            val peerSocketAddress = InetSocketAddress(peer, port)
-            val datagramPacket = DatagramPacket(buf, buf.size, peerSocketAddress)
+            val datagramPacket = DatagramPacket(buf, buf.size, peer)
             socket.send(datagramPacket)
         }
     }
 
+    /**
+     * Adding an IP of a new peer to the list of peers.
+     * @param address The IP address of the new peer.
+     */
     fun addIp(address: InetAddress) = lock.withLock {
-        peers.add(address)
+        peers.add(InetSocketAddress(address, sharedPort))
     }
 
-    fun shutdown() = dnsLookupThread.interrupt()
+    /**
+     * Releases all resources, namely interrupting the DNS lookup thread.
+     */
+    fun shutdown() {
+        dnsLookupThread.interrupt()
+        peers.clear()
+    }
 
     private companion object {
         private val logger = LoggerFactory.getLogger(ConnectedPeers::class.java)

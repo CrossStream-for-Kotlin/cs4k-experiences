@@ -19,15 +19,19 @@ import kotlin.concurrent.thread
 @Component
 class BrokerOption3DNS : Broker {
 
+    // Node's own IP Address
     private val inetAddress = InetAddress.getByName(Environment.getHost())
 
+    // Inbound information, where events are received from.
     private val inboundInetSocketAddress = InetSocketAddress(inetAddress, INBOUND_PORT)
     private val inboundSocket = DatagramSocket(inboundInetSocketAddress)
     private val inboundBuffer = ByteArray(INBOUND_BUFFER_SIZE)
 
+    // Outbound information, where events are sent to.
     private val outboundInetSocketAddress = InetSocketAddress(inetAddress, OUTBOUND_PORT)
     private val outboundSocket = DatagramSocket(outboundInetSocketAddress)
 
+    // Containers for subscribers and peers.
     private val associatedSubscribers = AssociatedSubscribers()
     private val connectedPeers = ConnectedPeers(inetAddress, SERVICE_NAME, INBOUND_PORT)
 
@@ -37,13 +41,15 @@ class BrokerOption3DNS : Broker {
         }
         connectedPeers.send(
             outboundSocket,
-            INBOUND_PORT,
             BrokerSerializer.serializeEventToJson(
                 Event("", ADD_MY_IP, "")
             ).toByteArray()
         )
     }
 
+    /**
+     * Blocks the thread reading the inbound socket and processes the information received.
+     */
     private fun listenSocket() {
         logger.info("events: start reading socket ip '{}' port '{}'", inboundSocket.localAddress, INBOUND_PORT)
         while (!inboundSocket.isClosed) {
@@ -81,7 +87,7 @@ class BrokerOption3DNS : Broker {
         val event = Event(topic, 0, message, isLastMessage)
         val eventJsonBytes = BrokerSerializer.serializeEventToJson(event).toByteArray()
 
-        connectedPeers.send(outboundSocket, INBOUND_PORT, eventJsonBytes)
+        connectedPeers.send(outboundSocket, eventJsonBytes)
 
         logger.info("publish topic '{}' event '{}", topic, event)
     }
@@ -101,10 +107,13 @@ class BrokerOption3DNS : Broker {
     private companion object {
         private val logger = LoggerFactory.getLogger(BrokerOption3DNS::class.java)
 
+        // Docker compose service name, used to lookup DNS.
         private val SERVICE_NAME = Environment.getServiceName()
 
+        // Special ID reserved to inform nodes that a new node just started.
         private const val ADD_MY_IP = -2L
 
+        // Ports used for communication.
         private const val INBOUND_PORT = 6789
         private const val OUTBOUND_PORT = 6790
 
