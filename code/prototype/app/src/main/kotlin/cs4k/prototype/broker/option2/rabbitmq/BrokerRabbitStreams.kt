@@ -58,16 +58,6 @@ class BrokerRabbitStreams(
     }
 
     /**
-     * Requesting stored info surrounding brokers to consume from common stream.
-     */
-    private fun fetchStoredInfoFromPeers() {
-        val publishingChannel = publishingChannelPool.getChannel()
-        val request = HistoryShareRequest(brokerId)
-        publishingChannel.basicPublish(offsetExchange, "", null, request.toString().toByteArray())
-        publishingChannelPool.stopUsingChannel(publishingChannel)
-    }
-
-    /**
      * Consumer used to process messages from stream.
      * @param channel The channel where messages are sent to.
      */
@@ -81,6 +71,7 @@ class BrokerRabbitStreams(
             val message = splitPayload.dropLast(1).joinToString(";")
             val isLast = splitPayload.last().toBoolean()
             val eventToNotify = consumedTopics.createAndSetLatestEventAndOffset(topic, offset, message, isLast)
+            channel.queueBind(brokerId, offsetExchange, "")
             logger.info("event received from stream -> {}", eventToNotify)
             associatedSubscribers
                 .getAll(topic)
@@ -177,6 +168,16 @@ class BrokerRabbitStreams(
     }
 
     /**
+     * Requesting stored info surrounding brokers to consume from common stream.
+     */
+    private fun fetchStoredInfoFromPeers() {
+        val publishingChannel = publishingChannelPool.getChannel()
+        val request = HistoryShareRequest(brokerId)
+        publishingChannel.basicPublish(offsetExchange, "", null, request.toString().toByteArray())
+        publishingChannelPool.stopUsingChannel(publishingChannel)
+    }
+
+    /**
      * Creates a queue used to share offsets, binding it to the exchange used to send requests to.
      */
     private fun enableOffsetSharing() {
@@ -192,7 +193,6 @@ class BrokerRabbitStreams(
                     "x-queue-type" to "quorum"
                 )
             )
-            channel.queueBind(brokerId, offsetExchange, "")
             channel.basicConsume(brokerId, OffsetShareHandler(channel))
         }, retryCondition)
     }
@@ -219,8 +219,8 @@ class BrokerRabbitStreams(
     init {
         createStream()
         fetchStoredInfoFromPeers()
-        listen()
         enableOffsetSharing()
+        listen()
     }
 
     // Flag that indicates if broker is gracefully shutting down.
