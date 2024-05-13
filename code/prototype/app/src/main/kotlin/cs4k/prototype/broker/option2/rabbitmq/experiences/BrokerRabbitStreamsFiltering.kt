@@ -15,7 +15,6 @@ import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
 import cs4k.prototype.broker.common.Subscriber
 import cs4k.prototype.broker.option2.rabbitmq.ChannelPool
-import cs4k.prototype.broker.option2.rabbitmq.ConsumedTopics
 import cs4k.prototype.broker.option2.rabbitmq.OffsetShareMessage
 import cs4k.prototype.broker.option2.rabbitmq.OffsetShareMessage.Companion.TYPE_REQUEST
 import cs4k.prototype.broker.option2.rabbitmq.OffsetShareMessage.Companion.TYPE_RESPONSE
@@ -37,8 +36,8 @@ import kotlin.time.Duration.Companion.milliseconds
 // @Component
 /**
  * Discontinued, because:
- *  - History of messages between different topics may vary in size depending on how recent they are. Might be a
- *  problem if one were to make a version with history.
+ *  - Consuming with several filters requires several channels, which in turn uses up several resources.
+ *  - While consumer can be restarted, it may introduce overhead when several new topics are subscribed to at once.
  */
 class BrokerRabbitStreamsFiltering(
     private val subscribeDelay: Duration = 250.milliseconds,
@@ -67,7 +66,7 @@ class BrokerRabbitStreamsFiltering(
     private val cleanExecutor = Executors.newSingleThreadScheduledExecutor()
 
     // Storage for topics that are consumed, storing channel, last offset and last event.
-    private val consumedTopics = ConsumedTopics()
+    private val consumedTopics = ConsumedTopicsDepreciated()
 
     /**
      * Requesting an offset from surrounding brokers to consume from common stream.

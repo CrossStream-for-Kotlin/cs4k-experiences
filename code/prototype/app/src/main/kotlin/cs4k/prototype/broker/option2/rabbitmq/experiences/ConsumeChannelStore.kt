@@ -1,4 +1,4 @@
-package cs4k.prototype.broker.option2.rabbitmq
+package cs4k.prototype.broker.option2.rabbitmq.experiences
 
 import com.rabbitmq.client.Channel
 import java.util.concurrent.locks.ReentrantLock
