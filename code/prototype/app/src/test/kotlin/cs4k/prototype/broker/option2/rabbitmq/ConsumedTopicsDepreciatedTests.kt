@@ -1,4 +1,4 @@
-package cs4k.prototype.broker.option2
+package cs4k.prototype.broker.option2.rabbitmq
 
 import cs4k.prototype.broker.option2.rabbitmq.experiences.ConsumedTopicsDepreciated
 import org.junit.jupiter.api.Test
