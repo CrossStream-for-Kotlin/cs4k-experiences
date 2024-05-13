@@ -38,7 +38,6 @@ sealed class BrokerException(msg: String) : Exception(msg) {
      */
     class ConnectionPoolSizeException(msg: String) : BrokerException(msg)
 
-
     /**
      * Something unexpected happened at the broker.
      *
