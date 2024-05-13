@@ -125,6 +125,7 @@ class BrokerRabbitStreams(
         private fun handleResponse(response: HistoryShareResponse) {
             if (gotInfoFromPeer.compareAndSet(false, true)) {
                 consumedTopics.fullUpdate(response.events)
+                channel.queueBind(brokerId, offsetExchange, "")
             }
         }
 
