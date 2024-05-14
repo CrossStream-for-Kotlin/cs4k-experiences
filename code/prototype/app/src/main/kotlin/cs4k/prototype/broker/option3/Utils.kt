@@ -8,7 +8,7 @@ object Utils {
         val networkInterfaces = NetworkInterface.getNetworkInterfaces()
         while (networkInterfaces.hasMoreElements()) {
             val networkInterface = networkInterfaces.nextElement()
-            if (networkInterface.isUp && networkInterface.supportsMulticast() && !networkInterface.isLoopback) {
+            if (networkInterface.isUp && networkInterface.supportsMulticast()) {
                 return networkInterface
             }
         }
