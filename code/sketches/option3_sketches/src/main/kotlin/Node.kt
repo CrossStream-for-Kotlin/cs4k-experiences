@@ -1,3 +1,8 @@
+import java.io.BufferedWriter
+import java.net.Socket
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
+
 /**
  * Class that represents a node
  */
@@ -12,22 +17,29 @@ class Node(private val localPort: Int, private val localIp: String = "127.0.0.1"
         lock.withLock {
             neighborData.split(",").forEach {
                 val (ip, port) = it.split(":")
-                neighbors.add(Neighbor(ip, port.toInt()))
+                val newNeighbor = Neighbor(Socket(ip.trim(), port.toInt()))
+                neighbors.add(newNeighbor)
             }
         }
     }
 
-
-    /**
-     * Connect to the neighbors
-     */
-    fun toNeighbors() {
+    fun addNeighbors(neighborData: String) {
         lock.withLock {
-            neighbors.forEach { it.connect(localPort, localIp) }
+            neighborData.split(",").forEach {
+                val (ip, port) = it.split(":")
+                val newNeighbor = Neighbor(Socket(ip.trim(), port.toInt()))
+                neighbors.add(newNeighbor)
+            }
         }
     }
 
-    /**
+    fun warnNeighbors() {
+        lock.withLock {
+             neighbors.forEach { it.sendMessage("new_neighbor;$localIp:$localPort") }
+        }
+    }
+
+  /**
      * Send a message to the neighbors
      */
     fun sendMessageToNeighbors(message: String) {
@@ -38,3 +50,8 @@ class Node(private val localPort: Int, private val localIp: String = "127.0.0.1"
         }
     }
 }
+
+
+
+
+

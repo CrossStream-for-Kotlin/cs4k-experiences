@@ -1,41 +1,64 @@
+import java.io.BufferedWriter
+import java.io.IOException
+import java.io.OutputStreamWriter
+import java.net.Socket
+
+
 /**
- * Class that represents a neighbor
+ * Class that represents a neighbor with a pre-established connection.
  */
-class Neighbor(val ip: String, val port: Int) {
-    //lateinit var socket: Socket
-
-    /**
-     * Connect to the neighbor and informs it about the new neighbor
-     */
-    fun connect(myPort: Int, myIp: String) {
-        try {
-            val socket = Socket(ip.trim(), port)
-            val out = BufferedWriter(OutputStreamWriter(socket.getOutputStream()))
-            out.write("new_neighbor;$myIp:$myPort")
-            out.newLine()
-            out.flush()
-            out.close()
-        } catch (e: Exception) {
-            println("Erro ao conectar-se ao vizinho $ip:$port -> ${e.message}")
-            throw e
-        }
+class Neighbor (private var socket: Socket) {
+    init {
+        socket.keepAlive = true
     }
-
+    private var out = BufferedWriter(OutputStreamWriter(socket.getOutputStream()))
     /**
-     * Send a message to the neighbor
+     * Send a message to the neighbor using the established connection.
      */
-
     fun sendMessage(message: String) {
         try {
-            val socket = Socket(ip.trim(), port)
-            val out = BufferedWriter(OutputStreamWriter(socket.getOutputStream()))
+            if (!isConnected()) {
+                disconnect()
+               // reconnect()
+            }
+            println("Sending message to neighbor: $message to port ${socket.port}")
             out.write(message)
             out.newLine()
             out.flush()
-            out.close()
-        }catch (e: Exception) {
-            println("Erro ao enviar mensagem para o vizinho $ip:$port -> ${e.message}")
+        } catch (e: IOException) {
+            println("IO Error sending message to neighbor ${socket.inetAddress.hostAddress}:${socket.port} -> ${e.message}")
+            disconnect()
+        } catch (e: Exception) {
+            println("General Error sending message to neighbor ${socket.inetAddress.hostAddress}:${socket.port} -> ${e.message}")
+            disconnect()
             throw e
         }
     }
+
+    fun reconnect() {
+        disconnect()
+        try {
+            socket = Socket(socket.inetAddress, socket.port)
+            socket.keepAlive = true
+            out = BufferedWriter(OutputStreamWriter(socket.getOutputStream()))
+        } catch (e: IOException) {
+            println("Failed to reconnect: ${e.message}")
+            throw e
+        }
+    }
+
+    fun disconnect() {
+        try {
+            out.close()
+            socket.close()
+        } catch (e: IOException) {
+            println("Error closing resources: ${e.message}")
+        }
+    }
+
+
+    /**
+     * Check if there is an active connection.
+     */
+    fun isConnected(): Boolean = socket.isConnected && !socket.isClosed
 }

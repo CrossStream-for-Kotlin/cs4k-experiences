@@ -2,11 +2,11 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.io.BufferedReader
 import java.io.BufferedWriter
+import java.io.IOException
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
-import java.util.concurrent.locks.ReentrantLock
+import java.net.SocketTimeoutException
 import kotlin.concurrent.thread
-import kotlin.concurrent.withLock
 
 fun main() {
     val b = BrokerSockets()
@@ -16,10 +16,21 @@ fun main() {
     }
 }
 
+
+fun m3ain() {
+    val s = Socket("127.0.0.1", "65500".toInt())
+    val out = BufferedWriter(OutputStreamWriter(s.getOutputStream()))
+    out.write("atao ze tas ai")
+    out.newLine()
+    out.flush()
+    out.close()
+}
+
 class BrokerSockets {
     // port and ip to the server that will assign the ports
     private val serverHost = "127.0.0.1"
     private val serverPort = 65432
+
     // node that will be created
     private lateinit var node: Node
 
@@ -39,20 +50,33 @@ class BrokerSockets {
     fun listen(assignedPort: Int) {
         //create a server socket to listen to the assigned port
         ServerSocket(assignedPort).use { clientServer ->
-            node.toNeighbors()
+            println("Listening on port $assignedPort")
+            node.warnNeighbors()
             while (true) {
                 val clientSocket = clientServer.accept()
-                clientSocket.use {
-                    val clientInput = BufferedReader(InputStreamReader(clientSocket.getInputStream()))
-                    val clientOutput = BufferedWriter(OutputStreamWriter(clientSocket.getOutputStream()))
-
-                    val message = clientInput.readLine()
-                    if (message.startsWith("new_neighbor")) {
-                        val neighbor = message.split(";")[1]
-                        node.updateNeighborList(neighbor)
-                    }
-                    logger.info("Received message: $message")
+                thread {
+                    handleConnection(clientSocket)
                 }
+            }
+        }
+    }
+
+    private fun handleConnection(clientSocket: Socket) {
+        clientSocket.use {
+            val clientInput = BufferedReader(InputStreamReader(clientSocket.getInputStream()))
+            val clientOutput = BufferedWriter(OutputStreamWriter(clientSocket.getOutputStream()))
+            clientSocket.soTimeout = 1000
+            try {
+                val message = clientInput.readLine() // Tente ler diretamente
+                if (message != null && message.startsWith("new_neighbor")) {
+                    val neighbor = message.split(";")[1]
+                    node.updateNeighborList(neighbor)
+                }
+                println("Received message: $message")
+            } catch (e: SocketTimeoutException) {
+                println("No data received within the timeout period.")
+            } catch (e: IOException) {
+                println("Error reading from socket: ${e.message}")
             }
         }
     }
@@ -67,11 +91,11 @@ class BrokerSockets {
             val received = input.readLine().split(";")
             val assignedPort = received[0].toInt()
             val neighbors = received[1].split(",")
-            logger.info("Broker with port -> $assignedPort")
-            logger.info("Neighbourhood Ports: $neighbors")
+            println("Broker with port -> $assignedPort")
+            println("Neighbourhood Ports: $neighbors")
             node = Node(assignedPort)
             if (neighbors.first() != "") {
-                node.updateNeighborList(neighbors.joinToString(","))
+                node.addNeighbors(neighbors.joinToString(","))
             }
             return assignedPort
         }
@@ -81,11 +105,7 @@ class BrokerSockets {
      * Publish a message to the neighborhood
      */
     fun publishMessage(message: String) {
-        logger.info("Send message to the neighbourdhood: $message")
+        println("Send message to the neighbourdhood: $message")
         node.sendMessageToNeighbors(message)
-    }
-
-    companion object{
-        val logger = Logger.getLogger(BrokerSockets::class.java.name)
     }
 }
