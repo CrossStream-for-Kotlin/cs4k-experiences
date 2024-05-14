@@ -6,7 +6,6 @@ import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.Subscriber
 import org.slf4j.LoggerFactory
-import org.springframework.stereotype.Component
 import java.net.DatagramPacket
 import java.net.InetAddress
 import java.net.InetSocketAddress

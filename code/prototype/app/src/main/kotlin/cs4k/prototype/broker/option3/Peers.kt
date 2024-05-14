@@ -54,7 +54,8 @@ class Peers(
             ipAddresses.forEach { ipAddress ->
                 when (ipAddress) {
                     is Inet4Address ->
-                        if (ipAddress != selfInetAddress) { peers.add(InetSocketAddress(ipAddress, sharedPort))
+                        if (ipAddress != selfInetAddress) {
+                            peers.add(InetSocketAddress(ipAddress, sharedPort))
                         }
                     is InetAddress -> logger.info("not ipv4 address -> {}", ipAddress)
                 }
