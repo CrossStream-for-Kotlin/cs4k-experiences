@@ -24,7 +24,9 @@ class BrokerSockets {
     private lateinit var node: Node
 
     init {
+        //get the port assigned by the server
         val assignedPort = getAssignedPort()
+        //start a new thread to listen to the assigned port, and connect to the neighbors and warn them about the new neighbor
         thread {
             listen(assignedPort)
         }
@@ -35,6 +37,7 @@ class BrokerSockets {
      * Listen to the assigned port
      */
     fun listen(assignedPort: Int) {
+        //create a server socket to listen to the assigned port
         ServerSocket(assignedPort).use { clientServer ->
             node.toNeighbors()
             while (true) {
@@ -48,14 +51,14 @@ class BrokerSockets {
                         val neighbor = message.split(";")[1]
                         node.updateNeighborList(neighbor)
                     }
-                    println("Receveid Message: $message")
+                    logger.info("Received message: $message")
                 }
             }
         }
     }
 
     /**
-     * Get the port assigned by the server
+     * Get the port assigned by the server, and the neighbors already assigned
      */
     fun getAssignedPort(): Int {
         Socket(serverHost, serverPort).use { socket ->
@@ -64,8 +67,8 @@ class BrokerSockets {
             val received = input.readLine().split(";")
             val assignedPort = received[0].toInt()
             val neighbors = received[1].split(",")
-            println("Broker with port -> $assignedPort")
-            println("Neighbourhood Ports: $neighbors")
+            logger.info("Broker with port -> $assignedPort")
+            logger.info("Neighbourhood Ports: $neighbors")
             node = Node(assignedPort)
             if (neighbors.first() != "") {
                 node.updateNeighborList(neighbors.joinToString(","))
@@ -78,91 +81,11 @@ class BrokerSockets {
      * Publish a message to the neighborhood
      */
     fun publishMessage(message: String) {
-        println("Send message to the neighbourdhood: $message")
+        logger.info("Send message to the neighbourdhood: $message")
         node.sendMessageToNeighbors(message)
     }
-}
 
-/**
- * Class that represents a neighbor
- */
-class Neighbor(val ip: String, val port: Int) {
-    //lateinit var socket: Socket
-
-    /**
-     * Connect to the neighbor and informs it about the new neighbor
-     */
-    fun connect(myPort: Int, myIp: String) {
-        try {
-            val socket = Socket(ip.trim(), port)
-            val out = BufferedWriter(OutputStreamWriter(socket.getOutputStream()))
-            out.write("new_neighbor;$myIp:$myPort")
-            out.newLine()
-            out.flush()
-            out.close()
-        } catch (e: Exception) {
-            println("Erro ao conectar-se ao vizinho $ip:$port -> ${e.message}")
-            throw e
-        }
-    }
-
-    /**
-     * Send a message to the neighbor
-     */
-
-    fun sendMessage(message: String) {
-        try {
-            val socket = Socket(ip.trim(), port)
-            val out = BufferedWriter(OutputStreamWriter(socket.getOutputStream()))
-            out.write(message)
-            out.newLine()
-            out.flush()
-            out.close()
-        }catch (e: Exception) {
-            println("Erro ao enviar mensagem para o vizinho $ip:$port -> ${e.message}")
-            throw e
-        }
-    }
-}
-
-
-/**
- * Class that represents a node
- */
-class Node(private val localPort: Int, private val localIp: String = "127.0.0.1") {
-    private val neighbors = mutableListOf<Neighbor>()
-    private val lock = ReentrantLock()
-
-    /**
-     * Update the list of neighbors
-     */
-    fun updateNeighborList(neighborData: String) {
-        lock.withLock {
-            neighborData.split(",").forEach {
-                val (ip, port) = it.split(":")
-                neighbors.add(Neighbor(ip, port.toInt()))
-            }
-        }
-    }
-
-
-    /**
-     * Connect to the neighbors
-     */
-    fun toNeighbors() {
-        lock.withLock {
-            neighbors.forEach { it.connect(localPort, localIp) }
-        }
-    }
-
-    /**
-     * Send a message to the neighbors
-     */
-    fun sendMessageToNeighbors(message: String) {
-        lock.withLock {
-            neighbors.forEach {
-                it.sendMessage(message)
-            }
-        }
+    companion object{
+        val logger = Logger.getLogger(BrokerSockets::class.java.name)
     }
 }

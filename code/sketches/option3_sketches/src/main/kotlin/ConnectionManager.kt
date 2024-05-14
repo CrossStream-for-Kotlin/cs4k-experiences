@@ -7,6 +7,9 @@ import java.io.OutputStreamWriter
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
+/**
+ * Represents the connection manager, responsible to atribute ports to the nodes and send the neighbors ports to the new node
+ */
 class ConnectionManager {
     val serverPort = 65432
     val portPoolStart = 65500
@@ -39,18 +42,6 @@ class ConnectionManager {
                 }
             }
         }
-    }
-}
-
-class NodeConnection(val socket: Socket, val assignedPort: Int) {
-    val input = BufferedReader(InputStreamReader(socket.getInputStream()))
-    private val output = BufferedWriter(OutputStreamWriter(socket.getOutputStream()))
-    val address: String = socket.inetAddress.hostAddress
-    val port = assignedPort
-
-    fun send(message: String) {
-        output.write("$message\n")
-        output.flush()
     }
 }
 
