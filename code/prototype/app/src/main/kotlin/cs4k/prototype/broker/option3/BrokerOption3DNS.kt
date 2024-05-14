@@ -19,7 +19,7 @@ import kotlin.concurrent.thread
 @Component
 class BrokerOption3DNS : Broker {
 
-    // Node's own IP Address
+    // Node's own IP address.
     private val inetAddress = InetAddress.getByName(Environment.getHost())
 
     // Inbound information, where events are received from.
@@ -31,24 +31,27 @@ class BrokerOption3DNS : Broker {
     private val outboundInetSocketAddress = InetSocketAddress(inetAddress, OUTBOUND_PORT)
     private val outboundSocket = DatagramSocket(outboundInetSocketAddress)
 
-    // Containers for subscribers and peers.
+    // Association between topics and subscribers lists.
     private val associatedSubscribers = AssociatedSubscribers()
-    private val connectedPeers = ConnectedPeers(inetAddress, SERVICE_NAME, INBOUND_PORT)
+
+    // Container where this node's peers are stored.
+    private val peers = Peers(inetAddress, SERVICE_NAME, INBOUND_PORT)
 
     init {
+        // Start a new thread ...
         thread {
+            // ... to listen for IP multicast packets.
             listenSocket()
         }
-        connectedPeers.send(
+        // Announce existence to other nodes.
+        peers.send(
             outboundSocket,
-            BrokerSerializer.serializeEventToJson(
-                Event("", ADD_MY_IP, "")
-            ).toByteArray()
+            BrokerSerializer.serializeEventToJson(Event("", ADD_MY_IP, "")).toByteArray()
         )
     }
 
     /**
-     * Blocks the thread reading the inbound socket and processes the information received.
+     * Blocks the thread reading the inbound socket and processes the IP packets received.
      */
     private fun listenSocket() {
         logger.info("events: start reading socket ip '{}' port '{}'", inboundSocket.localAddress, INBOUND_PORT)
@@ -59,7 +62,7 @@ class BrokerOption3DNS : Broker {
                 val receivedMessage = String(receivedDatagramPacket.data.copyOfRange(0, receivedDatagramPacket.length))
                 val event = BrokerSerializer.deserializeEventFromJson(receivedMessage)
                 if (event.id == ADD_MY_IP) {
-                    connectedPeers.addIp(receivedDatagramPacket.address)
+                    peers.addIp(receivedDatagramPacket.address)
                 } else {
                     logger.info("new event topic '{}' event '{}", event.topic, event)
                     associatedSubscribers
@@ -84,21 +87,27 @@ class BrokerOption3DNS : Broker {
     }
 
     override fun publish(topic: String, message: String, isLastMessage: Boolean) {
-        val event = Event(topic, 0, message, isLastMessage)
+        val event = Event(topic, -1, message, isLastMessage)
         val eventJsonBytes = BrokerSerializer.serializeEventToJson(event).toByteArray()
 
-        connectedPeers.send(outboundSocket, eventJsonBytes)
+        peers.send(outboundSocket, eventJsonBytes)
 
         logger.info("publish topic '{}' event '{}", topic, event)
     }
 
     override fun shutdown() {
-        connectedPeers.shutdown()
+        peers.shutdown()
         outboundSocket.close()
         inboundSocket.close()
         logger.info("broker turned off")
     }
 
+    /**
+     * Unsubscribe from a topic.
+     *
+     * @param topic The topic name.
+     * @param subscriber The subscriber who unsubscribed.
+     */
     private fun unsubscribe(topic: String, subscriber: Subscriber) {
         associatedSubscribers.removeIf(topic, { sub -> sub.id == subscriber.id })
         logger.info("unsubscribe topic '{}' id '{}", topic, subscriber.id)

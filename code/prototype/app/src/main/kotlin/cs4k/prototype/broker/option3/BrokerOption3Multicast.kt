@@ -46,13 +46,13 @@ class BrokerOption3Multicast : Broker {
 
         // Start a new thread ...
         thread {
-            // to listen for IP multicast packets.
+            // ... to listen for IP multicast packets.
             listenMulticastSocket()
         }
     }
 
     /**
-     * Listen for IP multicast packets.
+     * Blocks the thread reading the socket and processes the IP multicast packets received.
      */
     private fun listenMulticastSocket() {
         logger.info("start reading socket ip '{}' port '{}'", MULTICAST_IP, MULTICAST_PORT)

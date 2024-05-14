@@ -18,30 +18,30 @@ import kotlin.concurrent.withLock
  * @property sharedPort The inbound port shared by all nodes,
  * @property dnsExpiresOn The expiration time, in millis, of the results of the DNS query.
  */
-class ConnectedPeers(
+class Peers(
     private val selfInetAddress: InetAddress,
     private val sharedService: String,
     private val sharedPort: Int,
-    private val dnsExpiresOn: Long = 5000
+    private val dnsExpiresOn: Long = DEFAULT_DNS_EXPIRES_ON
 ) {
 
-    // List of IP addresses and sockets of the node's peers.
+    // Set of IP sockets addresses of the node's peers.
     private val peers: HashSet<InetSocketAddress> = hashSetOf()
 
     // Lock to control concurrency.
     private val lock = ReentrantLock()
 
-    init {
-        dnsLookup()
-    }
-
     // Thread that periodically does DNS queries.
     private val dnsLookupThread = Thread {
         while (true) {
-            sleep(dnsExpiresOn)
-            logger.info("looking up dns...")
+            logger.info("... looking up dns ...")
             dnsLookup()
+            sleep(dnsExpiresOn)
         }
+    }
+
+    init {
+        dnsLookupThread.start()
     }
 
     /**
@@ -51,18 +51,17 @@ class ConnectedPeers(
         peers.clear()
         try {
             val ipAddresses = InetAddress.getAllByName(sharedService)
-            for (ipAddress in ipAddresses) {
+            ipAddresses.forEach { ipAddress ->
                 when (ipAddress) {
                     is Inet4Address ->
-                        if (ipAddress != selfInetAddress) {
-                            peers.add(InetSocketAddress(ipAddress, sharedPort))
+                        if (ipAddress != selfInetAddress) { peers.add(InetSocketAddress(ipAddress, sharedPort))
                         }
                     is InetAddress -> logger.info("not ipv4 address -> {}", ipAddress)
                 }
             }
             logger.info("lookup dns, peers -> {}", peers.joinToString(" , "))
         } catch (ex: Exception) {
-            logger.info("[ERROR]: {}", ex.stackTrace)
+            logger.error("{}", ex.stackTrace)
         }
     }
 
@@ -72,7 +71,7 @@ class ConnectedPeers(
      * @param buf The payload of the datagram sent.
      */
     fun send(socket: DatagramSocket, buf: ByteArray) = lock.withLock {
-        for (peer in peers) {
+        peers.forEach { peer ->
             val datagramPacket = DatagramPacket(buf, buf.size, peer)
             socket.send(datagramPacket)
         }
@@ -82,8 +81,10 @@ class ConnectedPeers(
      * Adding an IP of a new peer to the list of peers.
      * @param address The IP address of the new peer.
      */
-    fun addIp(address: InetAddress) = lock.withLock {
-        peers.add(InetSocketAddress(address, sharedPort))
+    fun addIp(address: InetAddress) {
+        lock.withLock {
+            peers.add(InetSocketAddress(address, sharedPort))
+        }
     }
 
     /**
@@ -95,6 +96,8 @@ class ConnectedPeers(
     }
 
     private companion object {
-        private val logger = LoggerFactory.getLogger(ConnectedPeers::class.java)
+        private val logger = LoggerFactory.getLogger(Peers::class.java)
+
+        private const val DEFAULT_DNS_EXPIRES_ON = 5000L
     }
 }

@@ -1,5 +1,3 @@
-package cs4k.prototype.broker.option3
-
 import java.net.ServerSocket
 import java.net.Socket
 import java.io.BufferedReader
