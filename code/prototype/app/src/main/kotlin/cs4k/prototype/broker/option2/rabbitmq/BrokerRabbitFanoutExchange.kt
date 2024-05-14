@@ -1,16 +1,16 @@
 package cs4k.prototype.broker.option2.rabbitmq
 
 import com.rabbitmq.client.AMQP
-import cs4k.prototype.broker.common.AssociatedSubscribers
-import cs4k.prototype.broker.common.Event
-import cs4k.prototype.broker.common.RetryExecutor
 import com.rabbitmq.client.Channel
 import com.rabbitmq.client.ConnectionFactory
 import com.rabbitmq.client.DefaultConsumer
 import com.rabbitmq.client.Envelope
 import cs4k.prototype.broker.Broker
+import cs4k.prototype.broker.common.AssociatedSubscribers
 import cs4k.prototype.broker.common.BrokerException
 import cs4k.prototype.broker.common.BrokerSerializer
+import cs4k.prototype.broker.common.Event
+import cs4k.prototype.broker.common.RetryExecutor
 import cs4k.prototype.broker.common.Subscriber
 import org.slf4j.LoggerFactory
 import java.io.IOException
@@ -39,11 +39,10 @@ class BrokerRabbitFanoutExchange : Broker {
     // Admin event to request the latest event.
     private val adminTopic = "Request Latest Event"
 
-
     // Name of exchange used to publish messages to.
     private val broadCastExchange = "cs4k-notifications"
 
-    //Indetify Broker instace
+    // Indetify Broker instace
     private val brokerNumber = UUID.randomUUID().toString()
 
     // Consumer tag identifying the broker as consumer.
@@ -54,7 +53,6 @@ class BrokerRabbitFanoutExchange : Broker {
 
     // Channel pool for publishing messages.
     private val publisherChannelPool = ChannelPool(connectionFactory.newConnection())
-
 
     // Storage of most recent events sent by other brokers and set by this broker.
     private val latestTopicEvents = LatestTopicEvents()
@@ -89,7 +87,7 @@ class BrokerRabbitFanoutExchange : Broker {
      */
     private fun thereIsIdConflict(latestEvent: Event, event: Event) =
         latestEvent.id == event.id &&
-                (latestEvent.message != event.message)
+            (latestEvent.message != event.message)
 
     private inner class ConsumerHandler(channel: Channel) : DefaultConsumer(channel) {
 
@@ -113,7 +111,8 @@ class BrokerRabbitFanoutExchange : Broker {
                 )
                 if (latestEvent != null) {
                     channel.basicPublish(
-                        broadCastExchange, latestEvent.topic,
+                        broadCastExchange,
+                        latestEvent.topic,
                         null,
                         BrokerSerializer.serializeEventToJson(latestEvent).toByteArray()
                     )
@@ -130,7 +129,6 @@ class BrokerRabbitFanoutExchange : Broker {
             )
             val latestEvent = latestTopicEvents.getLatestReceivedEvent(event.topic)
             when {
-
                 latestEvent != null && thereIsIdConflict(latestEvent, event) -> {
                     val recentEvent = event.copy(id = event.id + 1)
                     logger.info("same event received with different id, latest updated {}", recentEvent)
@@ -191,7 +189,6 @@ class BrokerRabbitFanoutExchange : Broker {
         return { unsubscribe(topic, subscriber) }
     }
 
-
     private fun getLastEvent(topic: String): Event? {
         val event = latestTopicEvents.getLatestEvent(topic)
         logger.info("last event received -> {}", event)
@@ -241,7 +238,6 @@ class BrokerRabbitFanoutExchange : Broker {
         }, retryCondition)
     }
 
-
     /**
      * Unsubscribe from a topic.
      *
@@ -275,7 +271,6 @@ class BrokerRabbitFanoutExchange : Broker {
             consumerChannelPool.registerConsuming(channel, consumerTag)
         }, retryCondition)
     }
-
 
     /**
      * Notify the topic with the message.
@@ -321,6 +316,5 @@ class BrokerRabbitFanoutExchange : Broker {
             username = "user"
             password = "password"
         }
-
     }
 }

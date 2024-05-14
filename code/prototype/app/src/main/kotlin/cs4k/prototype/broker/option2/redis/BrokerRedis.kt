@@ -32,7 +32,7 @@ import java.util.UUID
 // - Support for Redis Cluster (change 'redisClient' and 'connectionPool' below in code)
 
 // TODO (Support communication to single node or cluster without changing code)
-@Component
+// @Component
 class BrokerRedis(
     private val dbConnectionPoolSize: Int = Utils.DEFAULT_DB_CONNECTION_POOL_SIZE
 ) : Broker {

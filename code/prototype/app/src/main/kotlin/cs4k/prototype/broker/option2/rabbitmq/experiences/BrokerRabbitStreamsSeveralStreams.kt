@@ -1,4 +1,4 @@
-package cs4k.prototype.broker.option2.experiences
+package cs4k.prototype.broker.option2.rabbitmq.experiences
 
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.Address
@@ -15,7 +15,6 @@ import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
 import cs4k.prototype.broker.common.Subscriber
 import cs4k.prototype.broker.option2.rabbitmq.ChannelPool
-import cs4k.prototype.broker.option2.rabbitmq.ConsumedTopics
 import cs4k.prototype.broker.option2.rabbitmq.OffsetShareMessage
 import cs4k.prototype.broker.option2.rabbitmq.OffsetShareMessage.Companion.TYPE_REQUEST
 import cs4k.prototype.broker.option2.rabbitmq.OffsetShareMessage.Companion.TYPE_RESPONSE
@@ -28,6 +27,7 @@ import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.util.Collections
 import java.util.UUID
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -37,10 +37,12 @@ import kotlin.time.Duration.Companion.milliseconds
 // @Component
 /**
  * Discontinued, because:
- *  - History of messages between different topics may vary in size depending on how recent they are. Might be a
- *  problem if one were to make a version with history.
+ *  - Consuming from several streams requires several channels, which in turn uses up several resources.
  */
-class BrokerRabbitStreamsFiltering(
+// - RabbitMQ Java client
+// - RabbitMQ Streams (n streams - n consumers)
+// - Support for RabbitMQ Cluster
+class BrokerRabbitStreamsSeveralStreams(
     private val subscribeDelay: Duration = 250.milliseconds,
     private val withholdTimeInMillis: Long = 5000
 ) : Broker {
@@ -55,7 +57,7 @@ class BrokerRabbitStreamsFiltering(
     private val publishingChannelPool = ChannelPool(createConnection())
 
     // Name of stream used to publish messages to.
-    private val streamName = "cs4k-notifications"
+    private val streamNamePrefix = "cs4k-notifications:"
 
     // ID of broker used as name for the queue to receive offset requests.
     private val brokerId = "cs4k-broker:" + UUID.randomUUID().toString()
@@ -67,7 +69,9 @@ class BrokerRabbitStreamsFiltering(
     private val cleanExecutor = Executors.newSingleThreadScheduledExecutor()
 
     // Storage for topics that are consumed, storing channel, last offset and last event.
-    private val consumedTopics = ConsumedTopics()
+    private val consumedTopics = ConsumedTopicsDepreciated()
+
+    private val createdStreams = ConcurrentLinkedQueue<String>()
 
     /**
      * Requesting an offset from surrounding brokers to consume from common stream.
@@ -185,20 +189,19 @@ class BrokerRabbitStreamsFiltering(
     /**
      * Creates a common stream to receive events.
      */
-    private fun createStream() {
+    private fun createStream(topic: String, channel: Channel) {
         retryExecutor.execute({ BrokerLostConnectionException() }, {
-            val consumingChannel = consumingChannelPool.getChannel()
-            consumingChannel.queueDeclare(
-                streamName,
+            channel.queueDeclare(
+                streamNamePrefix + topic,
                 true,
                 false,
                 false,
                 mapOf(
                     "x-queue-type" to "stream",
-                    "x-max-length-bytes" to 100_000
+                    "x-max-length-bytes" to 10_000
                 )
             )
-            consumingChannelPool.stopUsingChannel(consumingChannel)
+            createdStreams.add(streamNamePrefix + topic)
         }, retryCondition)
     }
 
@@ -225,7 +228,6 @@ class BrokerRabbitStreamsFiltering(
     }
 
     init {
-        createStream()
         enableOffsetSharing()
     }
 
@@ -287,13 +289,14 @@ class BrokerRabbitStreamsFiltering(
         try {
             topicLock?.lock()
             if (consumedTopics.isTopicBeingConsumed(topic) || consumedTopics.isBeingAnalyzed(topic)) return
-            val offset = consumedTopics.getOffset(topic, subscribeDelay) { fetchOffset(topic) } ?: "first"
+            val offset = consumedTopics.getOffset(topic, subscribeDelay) { fetchOffset(topic) } ?: "last"
             retryExecutor.execute({ BrokerLostConnectionException() }, {
                 val consumingChannel = consumingChannelPool.getChannel()
                 consumedTopics.setChannel(topic, consumingChannel)
+                createStream(topic, consumingChannel)
                 consumingChannel.basicQos(100)
                 val consumerTag = consumingChannel.basicConsume(
-                    streamName,
+                    streamNamePrefix + topic,
                     false,
                     mapOf(
                         "x-stream-offset" to offset,
@@ -349,9 +352,10 @@ class BrokerRabbitStreamsFiltering(
         val payload = "$message;$isLastMessage"
         retryExecutor.execute({ BrokerLostConnectionException() }, {
             val publishingChannel = publishingChannelPool.getChannel()
+            createStream(topic, publishingChannel)
             publishingChannel.basicPublish(
                 "",
-                streamName,
+                streamNamePrefix + topic,
                 AMQP.BasicProperties.Builder()
                     .headers(
                         Collections.singletonMap("x-stream-filter-value", topic) as Map<String, Any>?
@@ -371,6 +375,12 @@ class BrokerRabbitStreamsFiltering(
             publishingChannelPool.close()
             consumingChannelPool.close()
             consumedTopics.removeAll()
+            createConnection().use { conn ->
+                val channel = conn.createChannel()
+                for (stream in createdStreams) {
+                    channel.queueDelete(stream, true, false)
+                }
+            }
         } else {
             throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
         }
@@ -378,7 +388,7 @@ class BrokerRabbitStreamsFiltering(
 
     private companion object {
         // Logger instance for logging Broker class information.
-        private val logger = LoggerFactory.getLogger(BrokerRabbitStreamsFiltering::class.java)
+        private val logger = LoggerFactory.getLogger(BrokerRabbitStreamsSeveralStreams::class.java)
 
         /**
          * Creates the creator of connections for accessing RabbitMQ broker.

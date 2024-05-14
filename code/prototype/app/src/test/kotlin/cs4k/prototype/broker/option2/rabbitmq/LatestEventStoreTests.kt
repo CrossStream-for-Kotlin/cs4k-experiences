@@ -1,6 +1,6 @@
-package cs4k.prototype.broker.option2
+package cs4k.prototype.broker.option2.rabbitmq
 
-import cs4k.prototype.broker.option2.rabbitmq.ConsumedTopics
+import cs4k.prototype.broker.option2.rabbitmq.experiences.LatestEventStore
 import org.junit.jupiter.api.Test
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.abs
@@ -8,14 +8,15 @@ import kotlin.random.Random
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-class ConsumedTopicsTests {
+class LatestEventStoreTests {
 
     @Test
-    fun `event - simple set and get`() {
+    fun `simple set and get`() {
         // Assemble
         val topic = newRandomTopic()
         val message = newRandomMessage()
-        val store = ConsumedTopics()
+        val store = LatestEventStore()
+
         // Act
         store.createAndSetLatestEvent(topic, message)
         val event = store.getLatestEvent(topic)
@@ -27,9 +28,9 @@ class ConsumedTopicsTests {
     }
 
     @Test
-    fun `event - starting get should be null`() {
+    fun `starting get should be null`() {
         // Assemble
-        val store = ConsumedTopics()
+        val store = LatestEventStore()
 
         // Act
         val event = store.getLatestEvent("topic")
@@ -39,10 +40,10 @@ class ConsumedTopicsTests {
     }
 
     @Test
-    fun `event - several sets with the same topic should create events with sequencial ids`() {
+    fun `several sets with the same topic should create events with sequencial ids`() {
         // Assemble
         val topic = newRandomTopic()
-        val store = ConsumedTopics()
+        val store = LatestEventStore()
 
         repeat(NUMBER_OF_MESSAGES) {
             // Assemble
@@ -60,12 +61,12 @@ class ConsumedTopicsTests {
     }
 
     @Test
-    fun `event - several sets with different topics and removing all should leave store empty`() {
+    fun `several sets with different topics and removing all should leave store empty`() {
         // Assemble
         val threads = ConcurrentLinkedQueue<Thread>()
         val failures = ConcurrentLinkedQueue<AssertionError>()
         val errors = ConcurrentLinkedQueue<Throwable>()
-        val store = ConsumedTopics()
+        val store = LatestEventStore()
         val topics = mutableListOf<String>()
 
         repeat(NUMBER_OF_TOPICS) {
@@ -110,46 +111,6 @@ class ConsumedTopicsTests {
         topics.forEach {
             assertNull(store.getLatestEvent(it))
         }
-    }
-
-    @Test
-    fun `offset - simple set and get`() {
-        // Assemble
-        val topic = newRandomTopic()
-        val message = generateRandom()
-        val store = ConsumedTopics()
-        // Act
-        store.setOffset(topic, message)
-        val offset = store.getOffsetNoWait(topic)
-
-        // Assert
-        assertEquals(message, offset)
-    }
-
-    @Test
-    fun `offset - starting get should be null`() {
-        // Assemble
-        val store = ConsumedTopics()
-
-        // Act
-        val event = store.getOffsetNoWait("topic")
-
-        // Assert
-        assertEquals(null, event)
-    }
-
-    @Test
-    fun `offset - first passive waiting get should set offset`() {
-        // Assemble
-        val store = ConsumedTopics()
-        val offset = generateRandom()
-        val offsetSetter = { _: String -> store.setOffset(topic = "", offset) }
-
-        // Act
-        val fetchedOffset = store.getOffset("", fetchOffset = offsetSetter)
-
-        // Assert
-        assertEquals(offset, fetchedOffset)
     }
 
     companion object {

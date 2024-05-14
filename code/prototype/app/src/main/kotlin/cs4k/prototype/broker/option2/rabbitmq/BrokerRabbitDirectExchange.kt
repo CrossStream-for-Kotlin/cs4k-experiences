@@ -8,9 +8,9 @@ import com.rabbitmq.client.DefaultConsumer
 import com.rabbitmq.client.Envelope
 import cs4k.prototype.broker.Broker
 import cs4k.prototype.broker.common.AssociatedSubscribers
-import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.BrokerException.BrokerLostConnectionException
 import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
+import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
 import cs4k.prototype.broker.common.Subscriber
@@ -18,7 +18,6 @@ import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
-
 
 // [NOTE] Discontinued, mainly, because:
 //      - Cannot garantee that all nodes will have the same id for the same event.
@@ -50,11 +49,10 @@ class BrokerRabbitDirectExchange : Broker {
     // Consumer tag identifying the broker as consumer.
     private val queueTag = "cs4k-broker:" + UUID.randomUUID().toString()
 
-
     // Channel pool for consuming messages.
     private val consumerChannelPool = ChannelPool(connectionFactory.newConnection())
 
-    //channel pool for publishing messages.
+    // channel pool for publishing messages.
     private val publisherChannelPool = ChannelPool(connectionFactory.newConnection())
 
     // Storage of most recent events sent by other brokers and set by this broker.
@@ -89,7 +87,7 @@ class BrokerRabbitDirectExchange : Broker {
      */
     private fun thereIsIdConflict(latestEvent: Event, event: Event) =
         latestEvent.id == event.id &&
-                (latestEvent.message != event.message)
+            (latestEvent.message != event.message)
 
     /**
      * Consumer handler for consuming messages.
@@ -135,7 +133,6 @@ class BrokerRabbitDirectExchange : Broker {
             )
             val latestEvent = latestTopicEvents.getLatestReceivedEvent(event.topic)
             when {
-
                 latestEvent == null || latestEvent.id < event.id -> {
                     logger.info("new event received {}", event)
                     processMessage(event)
@@ -302,7 +299,6 @@ class BrokerRabbitDirectExchange : Broker {
         }, retryCondition)
     }
 
-
     /**
      * Notify the topic with the message.
      *
@@ -313,18 +309,18 @@ class BrokerRabbitDirectExchange : Broker {
      */
     private fun notify(topic: String, message: String, isLastMessage: Boolean) {
         retryExecutor.execute(exception = { BrokerLostConnectionException() }, action = {
-                val channel = publisherChannelPool.getChannel()
-                val id = latestTopicEvents.getNextEventId(topic)
-                val event = Event(topic, id, message, isLastMessage)
-                bindTopicToQueue(topic)
-                channel.basicPublish(
-                    broadCastExchange,
-                    topic,
-                    null,
-                    BrokerSerializer.serializeEventToJson(event).toByteArray()
-                )
-                logger.info("Message successfully published to topic: $topic with message: $message")
-                publisherChannelPool.stopUsingChannel(channel)
+            val channel = publisherChannelPool.getChannel()
+            val id = latestTopicEvents.getNextEventId(topic)
+            val event = Event(topic, id, message, isLastMessage)
+            bindTopicToQueue(topic)
+            channel.basicPublish(
+                broadCastExchange,
+                topic,
+                null,
+                BrokerSerializer.serializeEventToJson(event).toByteArray()
+            )
+            logger.info("Message successfully published to topic: $topic with message: $message")
+            publisherChannelPool.stopUsingChannel(channel)
         }, retryCondition)
     }
 

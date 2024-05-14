@@ -2,9 +2,7 @@ package cs4k.prototype.broker
 
 import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.Event
-
 import cs4k.prototype.broker.option2.rabbitmq.BrokerRabbitDirectExchange
-import cs4k.prototype.broker.option2.rabbitmq.BrokerRabbitFanoutExchange
 import org.junit.jupiter.api.AfterAll
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
@@ -24,28 +22,6 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 class BrokerTests {
-    /*
-    @Test
-    fun `cannot create a broker with a negative database connection pool size`() {
-        // Arrange
-        // Act
-        // Assert
-        assertFailsWith<BrokerException.ConnectionPoolSizeException> {
-            Broker(dbConnectionPoolSize = -10)
-        }
-    }
-
-    @Test
-    fun `cannot create a broker with too high a database connection pool size`() {
-        // Arrange
-        // Act
-        // Assert
-        assertFailsWith<BrokerException.ConnectionPoolSizeException> {
-            Broker(dbConnectionPoolSize = 1000)
-        }
-    }
-     */
-
 
     @Test
     fun `new subscriber in 1 topic should receive the last message`() {
@@ -491,7 +467,6 @@ class BrokerTests {
         var eventReceived = ""
         val latch = CountDownLatch(2)
 
-
         getRandomBrokerInstance().publish(topic, message)
 
         Thread.sleep(5000)
@@ -505,7 +480,6 @@ class BrokerTests {
             assertEquals(message, event.message)
             assertFalse(event.isLast)
             latch.countDown()
-
         }
 
         latch.await(1000, TimeUnit.MILLISECONDS)
@@ -519,17 +493,15 @@ class BrokerTests {
         // Arrange
 
         val topicsAndMessage = (1..NUMBER_OF_TOPICS).associate {
-            newRandomTopic() to  newRandomMessage()
+            newRandomTopic() to newRandomMessage()
         }
         topicsAndMessage.forEach {
             getRandomBrokerInstance().publish(it.key, it.value)
         }
 
-
-
         Thread.sleep(10000)
 
-        //ACT
+        // ACT
         val latch = CountDownLatch(topicsAndMessage.size)
         var receivedMessages = mutableListOf<String>()
         val unsubscribers = mutableListOf<() -> Unit>()
@@ -540,11 +512,9 @@ class BrokerTests {
                     receivedMessages.add(event.message)
                     latch.countDown()
                 }
-
             }
             unsubscribers.add(un)
         }
-
 
         latch.await()
 
@@ -554,7 +524,7 @@ class BrokerTests {
         unsubscribers.forEach { it() }
         assertEquals(receivedMessages.toSet().toList().size, topicsAndMessage.map { it.value }.size)
         receivedMessages.toSet().toList().forEach {
-            assertTrue(topicsAndMessage.map{it->it.value}.contains(it))
+            assertTrue(topicsAndMessage.map { it -> it.value }.contains(it))
         }
     }
 
@@ -569,7 +539,6 @@ class BrokerTests {
         val threads = ConcurrentLinkedQueue<Thread>()
         val errors = ConcurrentLinkedQueue<Exception>()
         val eventsReceived = ConcurrentLinkedQueue<Event>()
-
 
         repeat(NUMBER_OF_SUBSCRIBERS) {
             val unsubscribe = getRandomBrokerInstance().subscribe(
@@ -943,7 +912,6 @@ class BrokerTests {
         if (errors.isNotEmpty()) throw errors.peek()
     }
 
-
     @Test
     fun `consecutive subscription and unSubscriptions while periodic publication of a message and verify that all events are received in the correct order`() {
         // Arrange
@@ -996,7 +964,6 @@ class BrokerTests {
         // Assert
         assertEquals(messages.toList(), events.map { it.message }.toSet().toList())
     }
-
 
     @Test
     fun `stress test with simultaneous subscription and unSubscriptions while periodic publication of a message and verify that all events are received in the correct order`() {
@@ -1199,17 +1166,16 @@ class BrokerTests {
         private const val TEST_EXECUTION_TIME_MILLIS = 60000L
 
         private fun createBrokerInstance() =
-        // - PostgreSQL
-        // Broker()
+            // - PostgreSQL
+            // Broker()
 
-        // - Redis
-        // BrokerRedis()
+            // - Redis
+            // BrokerRedis()
 
             // - RabbitMQ
             BrokerRabbitDirectExchange()
-        //BrokerRabbitFanoutExchange()
+        // BrokerRabbitFanoutExchange()
         // BrokerRabbitStreams()
-
 
         private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { createBrokerInstance() }
 

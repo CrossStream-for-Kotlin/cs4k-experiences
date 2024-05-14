@@ -2,6 +2,8 @@ package cs4k.prototype.broker.option2.rabbitmq
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
+import cs4k.prototype.broker.common.Event
+import cs4k.prototype.broker.option2.rabbitmq.ConsumedTopics.ConsumeInfo
 
 class OffsetShareMessage(
     val type: String,
@@ -87,6 +89,37 @@ class OffsetShareRequest(
  */
 fun String.toOffsetShareRequest() = OffsetShareRequest.deserialize(this)
 
+/**
+ * Used to request offset before consuming a given topic, seeing if fellow brokers are already consuming and know
+ * the latest offset.
+ * @property sender The one sending the request.
+ */
+class HistoryShareRequest(
+    val sender: String
+) {
+
+    override fun toString(): String = objectMapper.writeValueAsString(this)
+
+    companion object {
+        private val objectMapper = ObjectMapper().registerModules(KotlinModule.Builder().build())
+
+        /**
+         * Converting the string format into the object.
+         * @param value The string form of the request.
+         * @return The request object.
+         */
+        fun deserialize(value: String): HistoryShareRequest =
+            objectMapper.readValue(value, HistoryShareRequest::class.java)
+    }
+}
+
+/**
+ * Converting the string format into the object.
+ * @receiver The string form of the request.
+ * @return The request object.
+ */
+fun String.toAllOffsetShareRequest() = HistoryShareRequest.deserialize(this)
+
 class OffsetShareResponse(
     val offset: Long,
     val lastEventId: Long,
@@ -114,3 +147,64 @@ class OffsetShareResponse(
  * @return The request object.
  */
 fun String.toOffsetShareResponse() = OffsetShareResponse.deserialize(this)
+
+class HistoryShareResponseDeprecated(
+    val events: Array<LatestEventInfo>
+) {
+
+    class LatestEventInfo(
+        val offset: Long,
+        val lastEvent: Event
+    )
+
+    override fun toString(): String = objectMapper.writeValueAsString(this)
+
+    companion object {
+        private val objectMapper = ObjectMapper().registerModules(KotlinModule.Builder().build())
+
+        /**
+         * Converting the string format into the object.
+         * @param value The string form of the request.
+         * @return The request object.
+         */
+        fun deserialize(value: String): HistoryShareResponseDeprecated =
+            objectMapper.readValue(value, HistoryShareResponseDeprecated::class.java)
+    }
+}
+
+/**
+ * Converting the string format into the object.
+ * @receiver The string form of the request.
+ * @return The request object.
+ */
+fun String.toHistoryShareResponseDeprecated() = HistoryShareResponseDeprecated.deserialize(this)
+
+/**
+ * Response containing all events stored in a broker.
+ * @property events All events that a broker has stored.
+ */
+class HistoryShareResponse(
+    val events: Array<ConsumeInfo>
+) {
+
+    override fun toString(): String = objectMapper.writeValueAsString(this)
+
+    companion object {
+        private val objectMapper = ObjectMapper().registerModules(KotlinModule.Builder().build())
+
+        /**
+         * Converting the string format into the object.
+         * @param value The string form of the request.
+         * @return The request object.
+         */
+        fun deserialize(value: String): HistoryShareResponse =
+            objectMapper.readValue(value, HistoryShareResponse::class.java)
+    }
+}
+
+/**
+ * Converting the string format into the object.
+ * @receiver The string form of the request.
+ * @return The request object.
+ */
+fun String.toAllOffsetShareResponse() = HistoryShareResponse.deserialize(this)
