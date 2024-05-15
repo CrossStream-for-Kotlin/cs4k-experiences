@@ -30,7 +30,9 @@ class Neighbors {
      */
     fun add(neighbor: Neighbor) {
         lock.withLock {
-            set.add(neighbor)
+            if (set.none { it.inetAddress == neighbor.inetAddress }) {
+                set.add(neighbor)
+            }
         }
     }
 
@@ -41,7 +43,7 @@ class Neighbors {
      */
     fun remove(neighbor: Neighbor) {
         lock.withLock {
-            set.remove(neighbor)
+            set.removeIf { it.inetAddress == neighbor.inetAddress }
         }
     }
 }
