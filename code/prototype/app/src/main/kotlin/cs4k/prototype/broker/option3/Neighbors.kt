@@ -37,6 +37,17 @@ class Neighbors {
     }
 
     /**
+     * Adds new neighbors if they don't exist yet.
+     *
+     * @param neighbors The neighbors to add.
+     */
+    fun addAll(neighbors: Set<Neighbor>) {
+        lock.withLock {
+            set.addAll(neighbors.filter { neighbor -> set.none { it.inetAddress == neighbor.inetAddress } })
+        }
+    }
+
+    /**
      * Remove a neighbor if it exists.
      *
      * @param neighbor The neighbor to remove.
