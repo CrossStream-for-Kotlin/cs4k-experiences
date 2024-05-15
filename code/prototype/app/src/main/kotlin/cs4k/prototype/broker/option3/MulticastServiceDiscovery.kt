@@ -9,12 +9,14 @@ import java.net.SocketException
 import kotlin.concurrent.thread
 
 /**
- * Responsible for service discovery through multicast.
+ * Responsible for service discovery through multicast, i.e.:
+ *  - Announce existence to neighbors via a multicast datagram packet.
+ *  - Process all receive datagram packet to discover neighbors.
  *
- * @property associatedPeers
+ * @property Neighbors The set of neighbors.
  */
 class MulticastServiceDiscovery(
-    private val associatedPeers: AssociatedPeers
+    private val neighbors: Neighbors
 ) {
 
     // Multicast IP address.
@@ -23,13 +25,13 @@ class MulticastServiceDiscovery(
     // Socket address.
     private val inetSocketAddress = InetSocketAddress(inetAddress, MULTICAST_PORT)
 
-    // Multicast socket to send and receive IP multicast packets.
+    // Multicast socket to send and receive multicast datagram packets.
     private val multicastSocket = MulticastSocket(MULTICAST_PORT)
 
     // Active network interface that supports multicast.
     private val networkInterface = Utils.getActiveMulticastNetworkInterface()
 
-    // Buffer that stores the content of received IP multicast packets.
+    // Buffer that stores the content of received multicast datagram packets.
     private val inboundBuffer = ByteArray(INBOUND_BUFFER_SIZE)
 
     init {
@@ -40,20 +42,20 @@ class MulticastServiceDiscovery(
         // Join the multicast group.
         multicastSocket.joinGroup(inetSocketAddress, networkInterface)
 
-        // Announce existence to other nodes.
-        announceExistenceToOtherNodes()
+        // Announce existence to neighbors.
+        announceExistenceToNeighbors()
 
         // Start a new thread ...
         thread {
-            // ... to listen for IP multicast packets.
+            // ... to listen for multicast datagram packet.
             listenMulticastSocket()
         }
     }
 
     /**
-     * Announce the existence of the node by sending a datagram packet.
+     * Announce the existence to neighbors by sending a multicast datagram packet.
      */
-    private fun announceExistenceToOtherNodes() {
+    private fun announceExistenceToNeighbors() {
         val messageBytes = MESSAGE.toByteArray()
         val datagramPacket = DatagramPacket(messageBytes, messageBytes.size, inetSocketAddress)
         multicastSocket.send(datagramPacket)
@@ -62,7 +64,7 @@ class MulticastServiceDiscovery(
     }
 
     /**
-     * Blocks the thread reading the socket and processes the IP multicast packets received.
+     * Blocks the thread reading the socket and processes multicast datagram packet received.
      */
     private fun listenMulticastSocket() {
         logger.info("start reading socket ip '{}' port '{}'", MULTICAST_IP, MULTICAST_PORT)
@@ -71,13 +73,14 @@ class MulticastServiceDiscovery(
                 val receivedDatagramPacket = DatagramPacket(inboundBuffer, inboundBuffer.size)
                 multicastSocket.receive(receivedDatagramPacket)
 
-                associatedPeers.addPeer(
-                    Peer(
+                neighbors.add(
+                    Neighbor(
                         inetAddress = receivedDatagramPacket.address,
-                        state = PeerState.NOT_CONNECTED
+                        relationState = NeighborRelationState.NOT_CONNECTED
                     )
                 )
             } catch (e: SocketException) {
+                logger.info("stop reading socket ip '{}' port '{}", MULTICAST_IP, MULTICAST_PORT)
                 break
             }
         }
