@@ -24,7 +24,7 @@ class Neighbors {
     }
 
     /**
-     * Add a neighbor to the hash set of neighbors if it doesn't exist yet.
+     * Add a neighbor if it doesn't exist yet.
      *
      * @param neighbor The neighbor to add.
      */
@@ -37,7 +37,7 @@ class Neighbors {
     }
 
     /**
-     * Remove a neighbor from the hash set of neighbors if it exists.
+     * Remove a neighbor if it exists.
      *
      * @param neighbor The neighbor to remove.
      */
