@@ -1,5 +1,6 @@
 package cs4k.prototype.broker.option3
 
+import java.net.InetAddress
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -24,6 +25,16 @@ class Neighbors {
     }
 
     /**
+     * Get a neighbor.
+     *
+     * @param inetAddress The IP address.
+     * @return The set of neighbors.
+     */
+    fun get(inetAddress: InetAddress) = lock.withLock {
+        set.find { it.inetAddress == inetAddress }
+    }
+
+    /**
      * Add a neighbor if it doesn't exist yet.
      *
      * @param neighbor The neighbor to add.
@@ -37,7 +48,7 @@ class Neighbors {
     }
 
     /**
-     * Adds new neighbors if they don't exist yet.
+     * Add new neighbors if they don't exist yet.
      *
      * @param neighbors The neighbors to add.
      */
@@ -57,4 +68,16 @@ class Neighbors {
             set.removeIf { it.inetAddress == neighbor.inetAddress }
         }
     }
+
+    /**
+     * Update a neighbor.
+     *
+     * @param neighbor The neighbor to update.
+     */
+    fun update(neighbor: Neighbor) =
+        lock.withLock {
+            remove(neighbor)
+            add(neighbor)
+            get(neighbor.inetAddress)
+        }
 }

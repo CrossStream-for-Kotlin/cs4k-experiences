@@ -1,7 +1,6 @@
 package cs4k.prototype.broker.option3
 
 import cs4k.prototype.broker.common.Environment
-import cs4k.prototype.broker.option3.NeighborRelationState.NOT_CONNECTED
 import org.slf4j.LoggerFactory
 import java.lang.Thread.sleep
 import java.net.Inet4Address
@@ -32,10 +31,9 @@ class DNSServiceDiscovery(
                 sleep(lookupAgainTime)
             }
         } catch (e: Exception) {
-            if(e is InterruptedException) {
+            if (e is InterruptedException) {
                 logger.info("dns lookup interrupted.")
-            }
-            else {
+            } else {
                 logger.info("dns lookup error: " + e.stackTrace)
             }
         }
@@ -47,7 +45,7 @@ class DNSServiceDiscovery(
     private fun dnsLookup() {
         val neighborsIp = InetAddress.getAllByName(SERVICE_NAME)
             .filter { it is Inet4Address && it != nodeInetAddress }
-            .map { Neighbor(it, NOT_CONNECTED) }
+            .map { Neighbor(it) }
             .toSet()
         neighbors.addAll(neighborsIp)
         logger.info("dns lookup success: neighbours found -> {}", neighborsIp.joinToString(", "))

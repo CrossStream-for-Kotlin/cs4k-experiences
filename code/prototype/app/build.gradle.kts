@@ -209,7 +209,7 @@ task<Exec>("prototypeOption3ComposeUp") {
         "--build",
         "--force-recreate",
         "--scale",
-        "spring-service=3"
+        "spring-service=2"
     )
     dependsOn("extractUberJar")
 }
