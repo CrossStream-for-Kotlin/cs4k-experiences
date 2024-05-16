@@ -5,6 +5,7 @@ import cs4k.prototype.broker.common.AssociatedSubscribers
 import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.Environment
 import cs4k.prototype.broker.common.Event
+import cs4k.prototype.broker.common.Subscriber
 import cs4k.prototype.broker.option3.ConnectionState.CONNECTED
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -16,11 +17,12 @@ import org.springframework.stereotype.Component
 import java.net.ConnectException
 import java.net.InetAddress
 import java.net.InetSocketAddress
-import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousServerSocketChannel
 import java.nio.channels.AsynchronousSocketChannel
+import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.concurrent.thread
+import kotlin.time.Duration
 
 @Component
 class BrokerOption3 : Broker {
@@ -33,7 +35,7 @@ class BrokerOption3 : Broker {
 
     private val serverSocketChannel = AsynchronousServerSocketChannel.open()
 
-    // private val eventsToSend = MessageQueue<Event>(EVENTS_TO_SEND_CAPACITY)
+    private val eventsToSend = MessageQueue<Event>(EVENTS_TO_SEND_CAPACITY)
 
     init {
         // DNSServiceDiscovery(neighbors)
@@ -44,18 +46,16 @@ class BrokerOption3 : Broker {
                 val listenServerSocketChannelJob = this.launch(readCoroutineDispatcher) {
                     listenServerSocketChannel(this)
                 }
-
                 val periodicConnectToNeighboursJob = this.launch(writeCoroutineDispatcher) {
                     periodicConnectToNeighbours()
                 }
-
-                // val processEventsToSendJob = this.launch(writeDispatcher) {
-                //    processEventsToSend()
-                // }
+                val processEventsToSendJob = this.launch(writeCoroutineDispatcher) {
+                    processEventsToSend()
+                }
 
                 listenServerSocketChannelJob.join()
                 periodicConnectToNeighboursJob.join()
-                // processEventsToSendJob.join()
+                processEventsToSendJob.join()
             }
         }
     }
@@ -126,20 +126,19 @@ class BrokerOption3 : Broker {
     }
 
     private suspend fun listenSocketChannel(neighbor: Neighbor) {
-        val byteBuffer = ByteBuffer.allocate(INBOUND_BUFFER_SIZE)
         while (true) {
             if (neighbor.isInboundConnectionActive) {
-                val readLength = neighbor.inboundConnection?.socketChannel?.readSuspend(byteBuffer)
-                val event = BrokerSerializer.deserializeEventFromJson(
-                    String(byteBuffer.reset().array(), 0, requireNotNull(readLength))
-                )
-                deliverToSubscribers(event)
-                logger.info(
-                    "[NODE IP '{}'] receive event '{}' from node ip '{}' ",
-                    selfIp,
-                    event,
-                    neighbor.inetAddress
-                )
+                val lineReader = LineReader { requireNotNull(neighbor.inboundConnection).socketChannel.readSuspend(it) }
+                lineReader.readLine()?.let { line ->
+                    val event = BrokerSerializer.deserializeEventFromJson(line)
+                    deliverToSubscribers(event)
+                    logger.info(
+                        "[NODE IP '{}'] receive event '{}' from node ip '{}' ",
+                        selfIp,
+                        event,
+                        neighbor.inetAddress
+                    )
+                }
             }
         }
     }
@@ -150,61 +149,59 @@ class BrokerOption3 : Broker {
             .forEach { subscriber -> subscriber.handler(event) }
     }
 
-    // private suspend fun processEventsToSend() {
-    //    while (true) {
-    //        val event = eventsToSend.dequeue(Duration.INFINITE)
-    //        logger.info("[NODE '{}'] process event '{}' ", selfIp, event)
-    //        deliverToSubscribers(event)
-    //
-    //        val eventJson = BrokerSerializer.serializeEventToJson(event)
-    //        sendToNeighbors(eventJson)
-    //    }
-    // }
+    private suspend fun processEventsToSend() {
+        while (true) {
+            val event = eventsToSend.dequeue(Duration.INFINITE)
+            logger.info("[NODE '{}'] process event '{}' ", selfIp, event)
+            deliverToSubscribers(event)
 
-    // private suspend fun sendToNeighbors(eventJson: String) {
-    //    neighbors
-    //        .getAll()
-    //        .forEach { neighbor ->
-    //            if (neighbor.isOutboundConnectionActive) {
-    //                neighbor.outboundConnection?.socketChannel?.writeSuspend(eventJson)
-    //                logger.info(
-    //                    "[NODE '{}'] send event '{}' to node ip '{}' ",
-    //                    selfIp,
-    //                    eventJson,
-    //                    neighbor.inetAddress
-    //                )
-    //            }
-    //        }
-    // }
+            val eventJson = BrokerSerializer.serializeEventToJson(event)
+            sendToNeighbors(eventJson)
+        }
+    }
+
+    private suspend fun sendToNeighbors(eventJson: String) {
+        neighbors
+            .getAll()
+            .forEach { neighbor ->
+                if (neighbor.isOutboundConnectionActive) {
+                    neighbor.outboundConnection?.socketChannel?.writeSuspend(eventJson)
+                    logger.info(
+                        "[NODE IP '{}'] send event '{}' to node ip '{}' ",
+                        selfIp,
+                        eventJson,
+                        neighbor.inetAddress
+                    )
+                }
+            }
+    }
 
     override fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
-        TODO("Not yet implemented")
-        //    val subscriber = Subscriber(UUID.randomUUID(), handler)
-        //    associatedSubscribers.addToKey(topic, subscriber)
-        //
-        //    logger.info("new subscriber topic '{}' id '{}", topic, subscriber.id)
-        //
-        //    return { unsubscribe(topic, subscriber) }
+        val subscriber = Subscriber(UUID.randomUUID(), handler)
+        associatedSubscribers.addToKey(topic, subscriber)
+
+        logger.info("new subscriber topic '{}' id '{}", topic, subscriber.id)
+
+        return { unsubscribe(topic, subscriber) }
     }
 
     override fun publish(topic: String, message: String, isLastMessage: Boolean) {
-        TODO("Not yet implemented")
-        //    val event = Event(topic, IGNORE_EVENT_ID, message, isLastMessage)
-        //    runBlocking {
-        //        eventsToSend.enqueue(event)
-        //    }
-        //
-        //    logger.info("publish topic '{}' event '{}", topic, event)
+        val event = Event(topic, IGNORE_EVENT_ID, message, isLastMessage)
+        runBlocking {
+            eventsToSend.enqueue(event)
+        }
+
+        logger.info("publish topic '{}' event '{}", topic, event)
     }
 
     override fun shutdown() {
         TODO("Not yet implemented")
     }
 
-    // private fun unsubscribe(topic: String, subscriber: Subscriber) {
-    //     associatedSubscribers.removeIf(topic, { sub -> sub.id == subscriber.id })
-    //    logger.info("unsubscribe topic '{}' id '{}", topic, subscriber.id)
-    // }
+    private fun unsubscribe(topic: String, subscriber: Subscriber) {
+        associatedSubscribers.removeIf(topic, { sub -> sub.id == subscriber.id })
+        logger.info("unsubscribe topic '{}' id '{}", topic, subscriber.id)
+    }
 
     private companion object {
         private val logger = LoggerFactory.getLogger(BrokerOption3::class.java)
@@ -216,7 +213,6 @@ class BrokerOption3 : Broker {
 
         private const val IGNORE_EVENT_ID = -1L
         private const val COMMON_PORT = 6790
-        private const val INBOUND_BUFFER_SIZE = 2048
         private const val EVENTS_TO_SEND_CAPACITY = 5000
         private const val DEFAULT_WAIT_TIME_TO_REFRESH_NEIGHBOURS_AGAIN = 2000L
     }
