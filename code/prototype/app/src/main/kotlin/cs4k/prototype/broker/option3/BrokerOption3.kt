@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
+import java.net.ConnectException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
@@ -65,26 +66,34 @@ class BrokerOption3 : Broker {
                 .getAll()
                 .forEach { neighbor ->
                     if (!neighbor.isOutboundConnectionActive) {
-                        logger.info("[NODE '{}'] try connect to node ip '{}", selfIp, neighbor.inetAddress)
+                        logger.info("[NODE IP '{}'] try connect to node ip '{}", selfIp, neighbor.inetAddress)
                         val inetOutboundSocketAddress = InetSocketAddress(neighbor.inetAddress, COMMON_PORT)
-                        val outboundSocketChannel = AsynchronousSocketChannel.open()
-                        outboundSocketChannel.connectSuspend(inetOutboundSocketAddress)
+                        try {
+                            val outboundSocketChannel = AsynchronousSocketChannel.open()
+                            outboundSocketChannel.connectSuspend(inetOutboundSocketAddress)
 
-                        neighbors.update(
-                            neighbor.copy(
-                                outboundConnection = OutboundConnection(
-                                    state = CONNECTED,
-                                    inetSocketAddress = inetOutboundSocketAddress,
-                                    socketChannel = outboundSocketChannel
+                            neighbors.update(
+                                neighbor.copy(
+                                    outboundConnection = OutboundConnection(
+                                        state = CONNECTED,
+                                        inetSocketAddress = inetOutboundSocketAddress,
+                                        socketChannel = outboundSocketChannel
+                                    )
                                 )
                             )
-                        )
 
-                        logger.info(
-                            "[NODE '{}'] establish an outbound connection with node ip '{}' ",
-                            selfIp,
-                            inetOutboundSocketAddress
-                        )
+                            logger.info(
+                                "[NODE IP '{}'] establish an outbound connection with node ip '{}' ",
+                                selfIp,
+                                inetOutboundSocketAddress
+                            )
+                        } catch (ex: ConnectException) {
+                            logger.info(
+                                "[NODE IP '{}'] can not establish an outbound connection with node ip '{}' ",
+                                selfIp,
+                                inetOutboundSocketAddress
+                            )
+                        }
                     }
                 }
             delay(DEFAULT_WAIT_TIME_TO_REFRESH_NEIGHBOURS_AGAIN)
@@ -94,7 +103,7 @@ class BrokerOption3 : Broker {
     private suspend fun listenServerSocketChannel(coroutineScope: CoroutineScope) {
         serverSocketChannel.use {
             serverSocketChannel.bind(InetSocketAddress(selfIp, COMMON_PORT))
-            logger.info("[NODE '{}'] server socket bound", selfIp)
+            logger.info("[NODE IP '{}'] server socket bound", selfIp)
             while (true) {
                 val inboundSocketChannel = serverSocketChannel.acceptSuspend()
                 coroutineScope.launch(readCoroutineDispatcher) {
@@ -106,7 +115,7 @@ class BrokerOption3 : Broker {
                     val neighbor = neighbors.get(inetAddress) ?: Neighbor(inetAddress)
                     val updatedNeighbor = neighbors.update(neighbor.copy(inboundConnection = inboundConnection))
                     logger.info(
-                        "[NODE '{}'] establish an inbound connection with node ip '{}' ",
+                        "[NODE IP '{}'] establish an inbound connection with node ip '{}' ",
                         selfIp,
                         inetAddress
                     )
