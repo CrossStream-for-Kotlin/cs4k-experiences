@@ -1,4 +1,4 @@
-package cs4k.prototype.broker.option2.rabbitmq
+package cs4k.prototype.broker.option2.rabbitmq.experiences
 
 // import org.springframework.stereotype.Component
 import com.rabbitmq.client.AMQP
@@ -14,6 +14,8 @@ import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
 import cs4k.prototype.broker.common.Subscriber
+import cs4k.prototype.broker.option2.rabbitmq.ChannelPool
+import cs4k.prototype.broker.option2.rabbitmq.LatestTopicEvents
 import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.util.UUID
