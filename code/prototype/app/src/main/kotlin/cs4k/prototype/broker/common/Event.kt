@@ -9,6 +9,7 @@ import java.sql.Timestamp
  * @property id The identifier of the event.
  * @property message The message of the event.
  * @property isLast If the event is the last one.
+ * @property timestamp The timestamp when the event was created.
  */
 data class Event(
     val topic: String,
@@ -26,6 +27,7 @@ data class Event(
         TOPIC("topic"),
         ID("id"),
         MESSAGE("message"),
-        IS_LAST("is_last");
+        IS_LAST("is_last"),
+        TIMESTAMP("timestamp");
     }
 }

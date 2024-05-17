@@ -31,7 +31,7 @@ class BrokerOption3 : Broker {
 
     private val neighbors = Neighbors()
 
-    private val selfIp = InetAddress.getByName(Environment.getHost()).hostAddress
+    private val selfIp = InetAddress.getByName(Environment.getHostname()).hostAddress
 
     private val serverSocketChannel = AsynchronousServerSocketChannel.open()
 

@@ -18,7 +18,7 @@ import kotlin.concurrent.thread
  */
 class DNSServiceDiscovery(
     private val neighbors: Neighbors,
-    private val nodeInetAddress: InetAddress = InetAddress.getByName(Environment.getHost()),
+    private val nodeInetAddress: InetAddress = InetAddress.getByName(Environment.getHostname()),
     private val lookupAgainTime: Long = 5000L
 ) {
 

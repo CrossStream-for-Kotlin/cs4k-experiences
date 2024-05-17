@@ -217,3 +217,6 @@ task<Exec>("prototypeOption3ComposeUp") {
 task<Exec>("prototypeOption3ComposeDown") {
     commandLine("docker-compose", "-f", "../docker-compose-prototype-option3.yaml", "down")
 }
+
+// Scale up/down:
+//  - docker-compose -f <DOCKER_COMPOSE_YAML> up --scale spring-service=<NUMBER_OF_INSTANCES> --no-recreate
