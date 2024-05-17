@@ -12,6 +12,10 @@ import java.nio.channels.CompletionHandler
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+/**
+ * Suspend function that build onm top of asynchronous function to create a connection.
+ * If coroutine is cancelled, closes socket.
+ */
 suspend fun AsynchronousSocketChannel.connectSuspend(address: InetSocketAddress) {
     return try {
         suspendCancellableCoroutine { continuation ->
@@ -38,6 +42,9 @@ suspend fun AsynchronousSocketChannel.connectSuspend(address: InetSocketAddress)
     }
 }
 
+/**
+ * Suspend function that build on top of asynchronous function to read messages.
+ */
 suspend fun AsynchronousSocketChannel.readSuspend(byteBuffer: ByteBuffer): Int {
     val readLength = suspendCancellableCoroutine { continuation ->
         this.read(
@@ -59,6 +66,9 @@ suspend fun AsynchronousSocketChannel.readSuspend(byteBuffer: ByteBuffer): Int {
     return readLength
 }
 
+/**
+ * Suspend function that build on top of asynchronous function to write messages.
+ */
 suspend fun AsynchronousSocketChannel.writeSuspend(text: String): Boolean {
     val textWithTerminationCharacter = if (text.last() == '\n' || text.last() == '\r') text else text + "\n"
     val byteBuffer = withContext(Dispatchers.IO) {

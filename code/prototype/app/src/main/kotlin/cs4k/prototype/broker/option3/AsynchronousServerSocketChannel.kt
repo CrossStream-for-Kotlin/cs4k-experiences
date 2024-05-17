@@ -7,6 +7,9 @@ import java.nio.channels.CompletionHandler
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+/**
+ * Suspend function that accepts an inbound connection.
+ */
 suspend fun AsynchronousServerSocketChannel.acceptSuspend(): AsynchronousSocketChannel {
     return suspendCancellableCoroutine { continuation ->
         this.accept(

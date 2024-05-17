@@ -67,7 +67,7 @@ class BrokerSockets {
             val clientOutput = BufferedWriter(OutputStreamWriter(clientSocket.getOutputStream()))
             clientSocket.soTimeout = 1000
             try {
-                val message = clientInput.readLine() // Tente ler diretamente
+                val message = clientInput.readLine()
                 if (message != null && message.startsWith("new_neighbor")) {
                     val neighbor = message.split(";")[1]
                     node.updateNeighborList(neighbor)
