@@ -13,12 +13,12 @@ suspend fun AsynchronousServerSocketChannel.acceptSuspend(): AsynchronousSocketC
             null,
             object : CompletionHandler<AsynchronousSocketChannel?, Unit?> {
                 override fun completed(result: AsynchronousSocketChannel?, attachment: Unit?) {
-                    requireNotNull(result)
+                    requireNotNull(result) { "The 'result' should not be null." }
                     continuation.resume(result)
                 }
 
                 override fun failed(exc: Throwable?, attachment: Unit?) {
-                    requireNotNull(exc)
+                    requireNotNull(exc) { "The 'exc' should not be null." }
                     continuation.resumeWithException(exc)
                 }
             }

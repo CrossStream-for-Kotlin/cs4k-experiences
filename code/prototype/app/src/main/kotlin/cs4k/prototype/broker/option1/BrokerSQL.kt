@@ -37,7 +37,7 @@ class BrokerSQL(
     private var isShutdown = false
 
     // Channel to listen for notifications.
-    private val channel = "share_channel"
+    private val channel = "cs4k_share_channel"
 
     // Association between topics and subscribers lists.
     private val associatedSubscribers = AssociatedSubscribers()
@@ -73,7 +73,7 @@ class BrokerSQL(
 
         val subscriber = Subscriber(UUID.randomUUID(), handler)
         associatedSubscribers.addToKey(topic, subscriber)
-        logger.info("new subscriber topic '{}' id '{}", topic, subscriber.id)
+        logger.info("new subscriber topic '{}' id '{}'", topic, subscriber.id)
 
         getLastEvent(topic)?.let { event -> handler(event) }
 
@@ -123,7 +123,7 @@ class BrokerSQL(
                     newNotifications.forEach { notification ->
                         if (notification.name == channel) {
                             logger.info(
-                                "new notification '{}' backendPid '{}' ",
+                                "new event '{}' backendPid '{}'",
                                 notification.parameter,
                                 pgConnection.backendPID
                             )
@@ -183,23 +183,25 @@ class BrokerSQL(
                 try {
                     conn.autoCommit = false
 
-                    val event = Event(
-                        topic = topic,
-                        id = getEventIdAndUpdateHistory(conn, topic, message, isLastMessage),
-                        message = message,
-                        isLast = isLastMessage
+                    val eventJson = BrokerSerializer.serializeEventToJson(
+                        Event(
+                            topic = topic,
+                            id = getEventIdAndUpdateHistory(conn, topic, message, isLastMessage),
+                            message = message,
+                            isLast = isLastMessage
+                        )
                     )
 
                     conn.prepareStatement("select pg_notify(?, ?)").use { stm ->
                         stm.setString(1, channel)
-                        stm.setString(2, BrokerSerializer.serializeEventToJson(event))
+                        stm.setString(2, eventJson)
                         stm.execute()
                     }
 
                     conn.commit()
                     conn.autoCommit = true
 
-                    logger.info("notify topic '{}' event '{}", topic, event)
+                    logger.info("notify topic '{}' event '{}", topic, eventJson)
                 } catch (e: SQLException) {
                     conn.rollback()
                     throw e
@@ -223,10 +225,10 @@ class BrokerSQL(
     private fun getEventIdAndUpdateHistory(conn: Connection, topic: String, message: String, isLast: Boolean): Long {
         conn.prepareStatement(
             """
-                insert into events (topic, message, is_last) 
+                insert into cs4k.events (topic, message, is_last) 
                 values (?, ?, ?) 
                 on conflict (topic) do update 
-                set id = events.id + 1, message = excluded.message, is_last = excluded.is_last
+                set id = cs4k.events.id + 1, message = excluded.message, is_last = excluded.is_last
                 returning id;
             """.trimIndent()
         ).use { stm ->
@@ -248,7 +250,7 @@ class BrokerSQL(
     private fun getLastEvent(topic: String): Event? =
         retryExecutor.execute({ BrokerLostConnectionException() }, {
             connectionPool.connection.use { conn ->
-                conn.prepareStatement("select id, message, is_last from events where topic = ?;").use { stm ->
+                conn.prepareStatement("select id, message, is_last from cs4k.events where topic = ?;").use { stm ->
                     stm.setString(1, topic)
                     val rs = stm.executeQuery()
                     return@execute if (rs.next()) {
@@ -276,7 +278,8 @@ class BrokerSQL(
                 conn.createStatement().use { stm ->
                     stm.execute(
                         """
-                            create table if not exists events (
+                            create schema if not exists cs4k;
+                            create table if not exists cs4k.events (
                                 topic varchar(128) primary key, 
                                 id integer default 0, 
                                 message varchar(512), 

@@ -7,7 +7,7 @@ import java.net.InetAddress
  *
  * @property inetAddress The IP address.
  * @property inboundConnection All information about inbound connection, i.e., the connection to receive events.
- * @property inboundConnection The information about outbound connection, i.e, the connection to send events.
+ * @property outboundConnection All information about outbound connection, i.e, the connection to send events.
  */
 data class Neighbor(
     val inetAddress: InetAddress,

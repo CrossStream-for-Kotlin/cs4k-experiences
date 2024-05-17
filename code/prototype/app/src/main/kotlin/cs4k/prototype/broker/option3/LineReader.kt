@@ -21,7 +21,7 @@ class LineReader(
     private var isEndOfInput: Boolean = false
 
     init {
-        require(bufferLength > 1)
+        require(bufferLength > 1) { "Buffer length must be greater than one." }
     }
 
     suspend fun readLine(): String? {

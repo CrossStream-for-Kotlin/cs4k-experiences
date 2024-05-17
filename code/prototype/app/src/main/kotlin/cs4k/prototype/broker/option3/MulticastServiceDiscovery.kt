@@ -8,7 +8,6 @@ import java.net.InetSocketAddress
 import java.net.MulticastSocket
 import java.net.NetworkInterface
 import java.net.SocketException
-import kotlin.concurrent.thread
 
 /**
  * Responsible for service discovery through multicast, i.e.:
@@ -40,38 +39,31 @@ class MulticastServiceDiscovery(
     // Buffer that stores the content of received multicast datagram packets.
     private val inboundBuffer = ByteArray(INBOUND_BUFFER_SIZE)
 
+    // Thread to listen for multicast datagram packet.
+    private val listenMulticastSocketThread = Thread {
+        joinMulticastGroup()
+        listenMulticastSocket()
+    }
+
+    // Thread to periodic announce existence to neighbors.
+    private val periodicAnnounceExistenceToNeighborsThread = Thread {
+        periodicAnnounceExistenceToNeighbors()
+    }
+
     init {
+        listenMulticastSocketThread.start()
+        periodicAnnounceExistenceToNeighborsThread.start()
+    }
+
+    /**
+     * Join the multicast group.
+     */
+    private fun joinMulticastGroup() {
         // Redefine the Time To Live value of IP multicast packets sent.
         // I.e. The maximum number of machine-to-machine hops that packets can make before being discarded.
         multicastSocket.timeToLive = TIME_TO_LIVE
 
-        // Join the multicast group.
         multicastSocket.joinGroup(inetSocketAddress, networkInterface)
-
-        // Start a new thread ...
-        thread {
-            // ... to listen for multicast datagram packet.
-            listenMulticastSocket()
-        }
-
-        // Start a new thread ...
-        thread {
-            // ... to periodic announce existence to neighbors.
-            periodicAnnounceExistenceToNeighbors()
-        }
-    }
-
-    /**
-     * Periodic announce the existence to neighbors by sending a multicast datagram packet.
-     */
-    private fun periodicAnnounceExistenceToNeighbors() {
-        while (true) {
-            val messageBytes = MESSAGE.toByteArray()
-            val datagramPacket = DatagramPacket(messageBytes, messageBytes.size, inetSocketAddress)
-            multicastSocket.send(datagramPacket)
-            logger.info("[NODE IP '{}'] announce node ip '{}'", selfIp, selfIp)
-            sleep(sendDatagramPacketAgainTime)
-        }
     }
 
     /**
@@ -79,18 +71,46 @@ class MulticastServiceDiscovery(
      */
     private fun listenMulticastSocket() {
         logger.info("[NODE IP '{}'] start reading multicast socket", selfIp)
-        while (!multicastSocket.isClosed) {
+        while (!listenMulticastSocketThread.isInterrupted && !multicastSocket.isClosed) {
             try {
                 val receivedDatagramPacket = DatagramPacket(inboundBuffer, inboundBuffer.size)
                 multicastSocket.receive(receivedDatagramPacket)
                 val remoteInetAddress = receivedDatagramPacket.address
                 if (remoteInetAddress.hostAddress != selfIp) {
                     neighbors.add(Neighbor(remoteInetAddress))
-                    logger.info("[NODE IP '{}'] receive multicast datagram packet from node ip '{}'", selfIp, remoteInetAddress)
+                    logger.info(
+                        "[NODE IP '{}'] receive multicast datagram packet from node ip '{}'",
+                        selfIp,
+                        remoteInetAddress
+                    )
                 }
-            } catch (e: SocketException) {
-                logger.info("[NODE IP '{}'] stop reading multicast socket", selfIp)
-                break
+            } catch (ex: Exception) {
+                if (ex is InterruptedException || ex is SocketException) {
+                    logger.info("[NODE IP '{}'] stop reading multicast socket", selfIp)
+                    break
+                }
+                throw ex
+            }
+        }
+    }
+
+    /**
+     * Periodic announce the existence to neighbors by sending a multicast datagram packet.
+     */
+    private fun periodicAnnounceExistenceToNeighbors() {
+        while (!periodicAnnounceExistenceToNeighborsThread.isInterrupted && !multicastSocket.isClosed) {
+            try {
+                val messageBytes = MESSAGE.toByteArray()
+                val datagramPacket = DatagramPacket(messageBytes, messageBytes.size, inetSocketAddress)
+                multicastSocket.send(datagramPacket)
+                logger.info("[NODE IP '{}'] announce node ip '{}'", selfIp, selfIp)
+                sleep(sendDatagramPacketAgainTime)
+            } catch (ex: Exception) {
+                if (ex is InterruptedException || ex is SocketException) {
+                    logger.info("[NODE IP '{}'] stop announce existence", selfIp)
+                    break
+                }
+                throw ex
             }
         }
     }
@@ -116,6 +136,9 @@ class MulticastServiceDiscovery(
      * Stop service discovery.
      */
     fun stop() {
+        listenMulticastSocketThread.interrupt()
+        periodicAnnounceExistenceToNeighborsThread.interrupt()
+        multicastSocket.leaveGroup(inetSocketAddress, networkInterface)
         multicastSocket.close()
     }
 

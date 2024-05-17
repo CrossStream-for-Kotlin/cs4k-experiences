@@ -24,7 +24,7 @@ suspend fun AsynchronousSocketChannel.connectSuspend(address: InetSocketAddress)
                     }
 
                     override fun failed(exc: Throwable?, attachment: Unit?) {
-                        requireNotNull(exc)
+                        requireNotNull(exc) { "The 'exc' should not be null." }
                         continuation.resumeWithException(exc)
                     }
                 }
@@ -45,12 +45,12 @@ suspend fun AsynchronousSocketChannel.readSuspend(byteBuffer: ByteBuffer): Int {
             null,
             object : CompletionHandler<Int?, Unit?> {
                 override fun completed(result: Int?, attachment: Unit?) {
-                    requireNotNull(result)
+                    requireNotNull(result) { "The 'result' should not be null." }
                     continuation.resume(result)
                 }
 
                 override fun failed(exc: Throwable?, attachment: Unit?) {
-                    requireNotNull(exc)
+                    requireNotNull(exc) { "The 'exc' should not be null." }
                     continuation.resumeWithException(exc)
                 }
             }
@@ -61,25 +61,23 @@ suspend fun AsynchronousSocketChannel.readSuspend(byteBuffer: ByteBuffer): Int {
 
 suspend fun AsynchronousSocketChannel.writeSuspend(text: String): Boolean {
     val textWithTerminationCharacter = if (text.last() == '\n' || text.last() == '\r') text else text + "\n"
-
     val byteBuffer = withContext(Dispatchers.IO) {
         Charsets.UTF_8.newEncoder().encode(CharBuffer.wrap(textWithTerminationCharacter))
     }.also {
         it.mark()
     }
-
     val writeLength = suspendCancellableCoroutine { continuation ->
         this.write(
             byteBuffer,
             null,
             object : CompletionHandler<Int?, Unit?> {
                 override fun completed(result: Int?, attachment: Unit?) {
-                    requireNotNull(result)
+                    requireNotNull(result) { "The 'result' should not be null." }
                     continuation.resume(result)
                 }
 
                 override fun failed(exc: Throwable?, attachment: Unit?) {
-                    requireNotNull(exc)
+                    requireNotNull(exc) { "The 'exc' should not be null." }
                     continuation.resumeWithException(exc)
                 }
             }

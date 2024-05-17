@@ -17,12 +17,12 @@ import kotlin.time.Duration
 class MessageQueue<T>(private val capacity: Int) {
 
     init {
-        require(capacity > 0) { "capacity must be a positive number" }
+        require(capacity > 0) { "Capacity must be a positive number." }
     }
 
     private val messageQueue = mutableListOf<T>()
 
-    class EnqueueRequest<T>(
+    private class EnqueueRequest<T>(
         val message: T,
         val continuation: Continuation<Unit>,
         var isDone: Boolean = false
@@ -30,7 +30,7 @@ class MessageQueue<T>(private val capacity: Int) {
 
     private val enqueueRequests = mutableListOf<EnqueueRequest<T>>()
 
-    class DequeueRequest<T>(
+    private class DequeueRequest<T>(
         val continuation: Continuation<Unit>,
         var value: T? = null,
         var isDone: Boolean = false
@@ -92,16 +92,16 @@ class MessageQueue<T>(private val capacity: Int) {
      * @param timeout The time limit to wait for the message to be available.
      */
     suspend fun dequeue(timeout: Duration): T {
-        require(timeout.inWholeNanoseconds > 0L) { "timeout must be greater than zero" }
+        require(timeout.inWholeNanoseconds > 0L) { "Timeout must be greater than zero." }
         var res: T? = null
         return try {
             withTimeout(timeout) {
                 res = dequeue()
+                requireNotNull(res) { "The 'res' should not be null." }
             }
-            requireNotNull(res)
         } catch (e: CancellationException) {
             if (res != null) {
-                requireNotNull(res)
+                requireNotNull(res) { "The 'res' should not be null." }
             } else {
                 throw e
             }
@@ -136,7 +136,7 @@ class MessageQueue<T>(private val capacity: Int) {
             }
         } catch (e: CancellationException) {
             if (myRequest?.isDone == true) {
-                return requireNotNull(myRequest?.value)
+                return requireNotNull(myRequest?.value) { "The 'myRequest.value' should not be null." }
             } else {
                 lock.withLock {
                     dequeueRequests.remove(myRequest)
@@ -145,6 +145,6 @@ class MessageQueue<T>(private val capacity: Int) {
             }
         }
         enqueueRequest?.continuation?.resume(Unit)
-        return message ?: requireNotNull(myRequest?.value)
+        return message ?: requireNotNull(myRequest?.value) { "The 'myRequest.value' should not be null." }
     }
 }

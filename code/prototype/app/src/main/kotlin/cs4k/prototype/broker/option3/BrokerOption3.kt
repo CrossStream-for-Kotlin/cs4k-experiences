@@ -9,9 +9,12 @@ import cs4k.prototype.broker.common.Subscriber
 import cs4k.prototype.broker.option3.ConnectionState.CONNECTED
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.supervisorScope
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.net.ConnectException
@@ -33,29 +36,33 @@ class BrokerOption3 : Broker {
 
     private val selfIp = InetAddress.getByName(Environment.getHostname()).hostAddress
 
+    private val serviceDiscovery = MulticastServiceDiscovery(neighbors, selfIp)
+    // DNSServiceDiscovery(neighbors)
+
     private val serverSocketChannel = AsynchronousServerSocketChannel.open()
 
     private val eventsToSend = MessageQueue<Event>(EVENTS_TO_SEND_CAPACITY)
 
-    init {
-        // DNSServiceDiscovery(neighbors)
-        MulticastServiceDiscovery(neighbors, selfIp)
+    private var scope: CoroutineScope? = null
 
+    init {
         thread {
             runBlocking {
-                val listenServerSocketChannelJob = this.launch(readCoroutineDispatcher) {
-                    listenServerSocketChannel(this)
-                }
-                val periodicConnectToNeighboursJob = this.launch(writeCoroutineDispatcher) {
-                    periodicConnectToNeighbours()
-                }
-                val processEventsToSendJob = this.launch(writeCoroutineDispatcher) {
-                    processEventsToSend()
-                }
+                scope = this
 
-                listenServerSocketChannelJob.join()
-                periodicConnectToNeighboursJob.join()
-                processEventsToSendJob.join()
+                supervisorScope {
+                    val listenServerSocketChannelJob = this.launch(readCoroutineDispatcher) {
+                        listenServerSocketChannel(this)
+                    }
+                    val periodicConnectToNeighboursJob = this.launch(writeCoroutineDispatcher) {
+                        periodicConnectToNeighbours()
+                    }
+                    val processEventsToSendJob = this.launch(writeCoroutineDispatcher) {
+                        processEventsToSend()
+                    }
+
+                    joinAll(listenServerSocketChannelJob, periodicConnectToNeighboursJob, processEventsToSendJob)
+                }
             }
         }
     }
@@ -72,7 +79,7 @@ class BrokerOption3 : Broker {
                             val outboundSocketChannel = AsynchronousSocketChannel.open()
                             outboundSocketChannel.connectSuspend(inetOutboundSocketAddress)
 
-                            neighbors.update(
+                            neighbors.updateAndGet(
                                 neighbor.copy(
                                     outboundConnection = OutboundConnection(
                                         state = CONNECTED,
@@ -87,12 +94,16 @@ class BrokerOption3 : Broker {
                                 selfIp,
                                 inetOutboundSocketAddress
                             )
-                        } catch (ex: ConnectException) {
-                            logger.info(
-                                "[NODE IP '{}'] can not establish an outbound connection with node ip '{}' ",
-                                selfIp,
-                                inetOutboundSocketAddress
-                            )
+                        } catch (ex: Exception) {
+                            if (ex is ConnectException) {
+                                logger.info(
+                                    "[NODE IP '{}'] can not establish an outbound connection with node ip '{}' ",
+                                    selfIp,
+                                    inetOutboundSocketAddress
+                                )
+                            } else {
+                                throw ex
+                            }
                         }
                     }
                 }
@@ -112,8 +123,8 @@ class BrokerOption3 : Broker {
                         socketChannel = inboundSocketChannel
                     )
                     val inetAddress = (inboundSocketChannel.remoteAddress as InetSocketAddress).address
-                    val neighbor = neighbors.get(inetAddress) ?: Neighbor(inetAddress)
-                    val updatedNeighbor = neighbors.update(neighbor.copy(inboundConnection = inboundConnection))
+                    val neighbor = neighbors.getBy(inetAddress) ?: Neighbor(inetAddress)
+                    val updatedNeighbor = neighbors.updateAndGet(neighbor.copy(inboundConnection = inboundConnection))
                     logger.info(
                         "[NODE IP '{}'] establish an inbound connection with node ip '{}' ",
                         selfIp,
@@ -195,7 +206,8 @@ class BrokerOption3 : Broker {
     }
 
     override fun shutdown() {
-        TODO("Not yet implemented")
+        serviceDiscovery.stop()
+        scope?.cancel()
     }
 
     private fun unsubscribe(topic: String, subscriber: Subscriber) {

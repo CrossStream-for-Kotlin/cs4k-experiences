@@ -28,9 +28,9 @@ class Neighbors {
      * Get a neighbor.
      *
      * @param inetAddress The IP address.
-     * @return The set of neighbors.
+     * @return The neighbor or null if it does not exist.
      */
-    fun get(inetAddress: InetAddress) = lock.withLock {
+    fun getBy(inetAddress: InetAddress) = lock.withLock {
         set.find { it.inetAddress == inetAddress }
     }
 
@@ -54,7 +54,7 @@ class Neighbors {
      */
     fun addAll(neighbors: Set<Neighbor>) {
         lock.withLock {
-            set.addAll(neighbors.filter { neighbor -> set.none { it.inetAddress == neighbor.inetAddress } })
+            set.addAll(neighbors.filterNot { neighbor -> set.any { it.inetAddress == neighbor.inetAddress } })
         }
     }
 
@@ -74,10 +74,10 @@ class Neighbors {
      *
      * @param neighbor The neighbor to update.
      */
-    fun update(neighbor: Neighbor) =
+    fun updateAndGet(neighbor: Neighbor) =
         lock.withLock {
             remove(neighbor)
             add(neighbor)
-            get(neighbor.inetAddress)
+            getBy(neighbor.inetAddress)
         }
 }
