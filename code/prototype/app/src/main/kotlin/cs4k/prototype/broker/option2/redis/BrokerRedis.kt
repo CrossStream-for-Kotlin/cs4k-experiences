@@ -44,6 +44,9 @@ class BrokerRedis(
     // Shutdown state.
     private var isShutdown = false
 
+    // Prefix for all keys and channels to mitigate possible conflicts with other contexts.
+    private val prefix = "cs4k_"
+
     // Association between topics and subscribers lists.
     private val associatedSubscribers = AssociatedSubscribers()
 
@@ -76,9 +79,9 @@ class BrokerRedis(
 
         override fun message(channel: String?, message: String?) {
             if (channel == null || message == null) throw UnexpectedBrokerException()
-            logger.info("new message '{}' channel '{}'", message, channel)
+            logger.info("new event '{}' channel '{}'", message, channel)
 
-            val subscribers = associatedSubscribers.getAll(channel)
+            val subscribers = associatedSubscribers.getAll(channel.substringAfter(prefix))
             if (subscribers.isNotEmpty()) {
                 val event = BrokerSerializer.deserializeEventFromJson(message)
                 subscribers.forEach { subscriber -> subscriber.handler(event) }
@@ -98,7 +101,7 @@ class BrokerRedis(
         associatedSubscribers.addToKey(topic, subscriber) {
             subscribeTopic(topic)
         }
-        logger.info("new subscriber topic '{}' id '{}", topic, subscriber.id)
+        logger.info("new subscriber topic '{}' id '{}'", topic, subscriber.id)
 
         getLastEvent(topic)?.let { event -> handler(event) }
 
@@ -145,8 +148,8 @@ class BrokerRedis(
      */
     private fun subscribeTopic(topic: String) {
         retryExecutor.execute({ BrokerLostConnectionException() }, {
-            logger.info("subscribe new topic '{}'", topic)
-            pubSubConnection.async().subscribe(topic)
+            logger.info("subscribe new topic '{}'", prefix + topic)
+            pubSubConnection.async().subscribe(prefix + topic)
         }, retryCondition)
     }
 
@@ -158,8 +161,8 @@ class BrokerRedis(
      */
     private fun unsubscribeTopic(topic: String) {
         retryExecutor.execute({ BrokerLostConnectionException() }, {
-            logger.info("unsubscribe gone topic '{}'", topic)
-            pubSubConnection.async().unsubscribe(topic)
+            logger.info("unsubscribe gone topic '{}'", prefix + topic)
+            pubSubConnection.async().unsubscribe(prefix + topic)
         }, retryCondition)
     }
 
@@ -173,14 +176,16 @@ class BrokerRedis(
      */
     private fun publishMessage(topic: String, message: String, isLastMessage: Boolean) {
         retryExecutor.execute({ BrokerLostConnectionException() }, {
-            val event = Event(
-                topic = topic,
-                id = getEventIdAndUpdateHistory(topic, message, isLastMessage),
-                message = message,
-                isLast = isLastMessage
+            val eventJson = BrokerSerializer.serializeEventToJson(
+                Event(
+                    topic = topic,
+                    id = getEventIdAndUpdateHistory(topic, message, isLastMessage),
+                    message = message,
+                    isLast = isLastMessage
+                )
             )
-            pubSubConnection.async().publish(topic, BrokerSerializer.serializeEventToJson(event))
-            logger.info("publish topic '{}' event '{}", topic, event)
+            pubSubConnection.async().publish(prefix + topic, eventJson)
+            logger.info("publish topic '{}' event '{}", topic, eventJson)
         }, retryCondition)
     }
 
@@ -199,7 +204,7 @@ class BrokerRedis(
             conn.sync().eval(
                 GET_EVENT_ID_AND_UPDATE_HISTORY_SCRIPT,
                 ScriptOutputType.INTEGER,
-                arrayOf(topic),
+                arrayOf(prefix + topic),
                 Event.Prop.ID.key,
                 Event.Prop.MESSAGE.key,
                 message,
@@ -218,7 +223,7 @@ class BrokerRedis(
     private fun getLastEvent(topic: String): Event? =
         retryExecutor.execute({ BrokerLostConnectionException() }, {
             val map = connectionPool.borrowObject().use { conn ->
-                conn.sync().hgetall(topic)
+                conn.sync().hgetall(prefix + topic)
             }
             val id = map[Event.Prop.ID.key]?.toLong()
             val message = map[Event.Prop.MESSAGE.key]
