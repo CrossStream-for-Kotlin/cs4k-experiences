@@ -13,6 +13,6 @@ import java.nio.channels.AsynchronousSocketChannel
 data class OutboundConnection(
     val state: ConnectionState,
     val inetSocketAddress: InetSocketAddress,
-    val socketChannel: AsynchronousSocketChannel,
+    val socketChannel: AsynchronousSocketChannel? = null,
     var numberRetries: Int = 0
 )

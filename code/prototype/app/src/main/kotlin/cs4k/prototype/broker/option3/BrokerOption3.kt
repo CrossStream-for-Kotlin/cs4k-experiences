@@ -10,7 +10,11 @@ import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
 import cs4k.prototype.broker.common.Subscriber
 import cs4k.prototype.broker.option3.ConnectionState.CONNECTED
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -51,19 +55,16 @@ class BrokerOption3 : Broker {
     // The queue of events to send to neighbors.
     private val eventsToSend = MessageQueue<Event>(EVENTS_TO_SEND_CAPACITY)
 
-    private val retryExecutor = RetryExecutor()
 
-    private var scope: CoroutineScope? = null
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     init {
         thread {
             runBlocking {
-                scope = this
-
                 supervisorScope {
                     // Start the server socket channel to accept inbound connections.
                     val listenServerSocketChannelJob = this.launch(readCoroutineDispatcher) {
-                        listenServerSocketChannel(this)
+                        listenServerSocketChannel()
                     }
                     // Periodically connect new neighbors.
                     val periodicConnectToNeighboursJob = this.launch(writeCoroutineDispatcher) {
@@ -79,6 +80,7 @@ class BrokerOption3 : Broker {
         }
     }
 
+
     /**
      * Periodically refreshing the outBound connections to neighbors.
      * In case of having a new neighbor, try to connect to it.
@@ -92,56 +94,57 @@ class BrokerOption3 : Broker {
                     if (!neighbor.isOutboundConnectionActive) {
                         logger.info("[NODE IP '{}'] try connect to node ip '{}", selfIp, neighbor.inetAddress)
                         val inetOutboundSocketAddress = InetSocketAddress(neighbor.inetAddress, COMMON_PORT)
+                        try {
+                            val outboundSocketChannel = AsynchronousSocketChannel.open()
+                            outboundSocketChannel.connectSuspend(inetOutboundSocketAddress)
 
-                            retryExecutor.suspendExecute(
-                                exception = { BrokerConnectionException().also {
-                                    neighbors.updateAndGet(neighbor.copy(outboundConnection = neighbor.outboundConnection?.let {
-                                        it.copy(numberRetries = it.numberRetries + 1)
-                                        it.copy(state = ConnectionState.NOT_CONNECTED)
-                                    }))
-                                }},
-                                action = {
-                                    logger.info("[NODE IP '{}'] try connect to node ip '{}", selfIp, neighbor.inetAddress)
+                            neighbors.updateAndGet(
+                                neighbor.copy(
+                                    outboundConnection = OutboundConnection(
+                                        state = CONNECTED,
+                                        inetSocketAddress = inetOutboundSocketAddress,
+                                        socketChannel = outboundSocketChannel
+                                    )
+                                )
+                            )
 
-                                    // Establish an outbound connection with the neighbor.
-                                    val outboundSocketChannel = AsynchronousSocketChannel.open()
-                                    outboundSocketChannel.connectSuspend(inetOutboundSocketAddress)
-
-                                    // Update the neighbor with the outbound connection, with the corresponding state and socket channel.
+                            logger.info(
+                                "[NODE IP '{}'] establish an outbound connection with node ip '{}' ",
+                                selfIp,
+                                inetOutboundSocketAddress
+                            )
+                        } catch (ex: Exception) {
+                            if (ex is ConnectException) {
+                                if (neighbor.outboundConnection?.numberRetries != null && neighbor.outboundConnection.numberRetries >= 3) {
+                                    neighbors.remove(neighbor)
+                                }else {
                                     neighbors.updateAndGet(
                                         neighbor.copy(
                                             outboundConnection = OutboundConnection(
-                                                state = CONNECTED,
+                                                state = ConnectionState.DISCONNECTED,
                                                 inetSocketAddress = inetOutboundSocketAddress,
-                                                socketChannel = outboundSocketChannel,
-                                                numberRetries = 0
+                                                socketChannel = null,
+                                                numberRetries = neighbor.outboundConnection?.numberRetries?.plus(1) ?: 1
                                             )
                                         )
                                     )
-
-                                    logger.info(
-                                        "[NODE IP '{}'] establish an outbound connection with node ip '{}' ",
-                                        selfIp,
-                                        inetOutboundSocketAddress
-                                    )
-                                },
-                                retryCondition = { ex ->
-                                    if (ex is ConnectException) {
-                                        logger.info(
-                                            "[NODE IP '{}'] can not establish an outbound connection with node ip '{}' ",
-                                            selfIp,
-                                            inetOutboundSocketAddress
-                                        )
-                                        true
-                                    } else {
-                                        false
-                                    }
                                 }
-                            )
+
+                                logger.info(
+                                    "[NODE IP '{}'] can not establish an outbound connection with node ip '{}' ",
+                                    selfIp,
+                                    inetOutboundSocketAddress
+                                )
+                            } else {
+                                throw ex
+                            }
+                        }
                     }
                 }
             delay(DEFAULT_WAIT_TIME_TO_REFRESH_NEIGHBOURS_AGAIN)
+
         }
+
     }
 
     /**
@@ -149,7 +152,7 @@ class BrokerOption3 : Broker {
      * @param coroutineScope the coroutine scope
      * @return the job
      */
-    private suspend fun listenServerSocketChannel(coroutineScope: CoroutineScope) {
+    private suspend fun listenServerSocketChannel() {
         serverSocketChannel.use {
             // Bind the server socket channel to the IP address and port of the broker.
             serverSocketChannel.bind(InetSocketAddress(selfIp, COMMON_PORT))
@@ -157,7 +160,7 @@ class BrokerOption3 : Broker {
             while (true) {
                 // Accept inbound connections from neighbors.
                 val inboundSocketChannel = serverSocketChannel.acceptSuspend()
-                coroutineScope.launch(readCoroutineDispatcher) {
+                scope.launch(readCoroutineDispatcher) {
                     // Establish an inbound connection with the neighbor.
                     val inboundConnection = InboundConnection(
                         state = CONNECTED,
