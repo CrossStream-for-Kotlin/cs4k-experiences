@@ -107,7 +107,7 @@ class BrokerSQL(
 
     /**
      * Wait for notifications.
-     * If a new notification arrives, create an event and call the handler of the associated subscribers.
+     * If a new notification arrives, create an event and deliver it to subscribers.
      *
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      * @throws UnexpectedBrokerException If something unexpected happens.
@@ -128,14 +128,21 @@ class BrokerSQL(
                                 pgConnection.backendPID
                             )
                             val event = BrokerSerializer.deserializeEventFromJson(notification.parameter)
-                            associatedSubscribers
-                                .getAll(event.topic)
-                                .forEach { subscriber -> subscriber.handler(event) }
+                            deliverToSubscribers(event)
                         }
                     }
                 }
             }
         }, retryCondition)
+    }
+
+    /**
+     * Deliver event to subscribers, i.e., call all subscriber handlers of the event topic.
+     */
+    private fun deliverToSubscribers(event: Event) {
+        associatedSubscribers
+            .getAll(event.topic)
+            .forEach { subscriber -> subscriber.handler(event) }
     }
 
     /**
