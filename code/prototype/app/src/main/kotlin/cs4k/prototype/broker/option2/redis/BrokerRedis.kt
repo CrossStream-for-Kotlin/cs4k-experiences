@@ -137,7 +137,7 @@ class BrokerRedis(
             predicate = { sub -> sub.id == subscriber.id },
             onTopicRemove = { unsubscribeTopic(topic) }
         )
-        logger.info("unsubscribe topic '{}' id '{}", topic, subscriber.id)
+        logger.info("unsubscribe topic '{}' id '{}'", topic, subscriber.id)
     }
 
     /**
@@ -185,7 +185,7 @@ class BrokerRedis(
                 )
             )
             pubSubConnection.async().publish(prefix + topic, eventJson)
-            logger.info("publish topic '{}' event '{}", topic, eventJson)
+            logger.info("publish topic '{}' event '{}'", topic, eventJson)
         }, retryCondition)
     }
 

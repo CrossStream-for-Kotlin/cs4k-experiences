@@ -102,7 +102,7 @@ class BrokerSQL(
      */
     private fun unsubscribe(topic: String, subscriber: Subscriber) {
         associatedSubscribers.removeIf(topic, { sub -> sub.id == subscriber.id })
-        logger.info("unsubscribe topic '{}' id '{}", topic, subscriber.id)
+        logger.info("unsubscribe topic '{}' id '{}'", topic, subscriber.id)
     }
 
     /**
@@ -208,7 +208,7 @@ class BrokerSQL(
                     conn.commit()
                     conn.autoCommit = true
 
-                    logger.info("notify topic '{}' event '{}", topic, eventJson)
+                    logger.info("notify topic '{}' event '{}'", topic, eventJson)
                 } catch (e: SQLException) {
                     conn.rollback()
                     throw e
