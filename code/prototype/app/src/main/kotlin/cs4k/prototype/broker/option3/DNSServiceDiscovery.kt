@@ -1,6 +1,8 @@
 package cs4k.prototype.broker.option3
 
+import cs4k.prototype.broker.common.BrokerException.UnexpectedBrokerException
 import cs4k.prototype.broker.common.Environment
+import cs4k.prototype.broker.common.RetryExecutor
 import org.slf4j.LoggerFactory
 import java.lang.Thread.sleep
 import java.net.Inet4Address
@@ -9,46 +11,52 @@ import kotlin.concurrent.thread
 
 /**
  * Responsible for service discovery through Domain Name System (DNS) queries, i.e.:
- *  - Querying the DNS server, giving it a name (that being a Docker service name),
+ *  - Periodic querying the DNS server, giving it a name (that being a Docker service name).
  *  - Adding new entries to the neighbors.
  *
- * @property Neighbors The set of neighbors.
- * @property nodeInetAddress The node's own IP address.
+ * @property neighbors The set of neighbors.
+ * @property selfInetAddress The node's own inet address (IP).
  * @property lookupAgainTime Amount of time, in milliseconds before another DNS query.
  */
 class DNSServiceDiscovery(
     private val neighbors: Neighbors,
-    private val nodeInetAddress: InetAddress = InetAddress.getByName(Environment.getHostname()),
-    private val lookupAgainTime: Long = 5000L
+    private val selfInetAddress: InetAddress = InetAddress.getByName(Environment.getHostname()),
+    private val lookupAgainTime: Long = DEFAULT_LOOKUP_AGAIN_TIME
 ) {
+
+    // Retry executor.
+    private val retryExecutor = RetryExecutor()
 
     // Thread responsible for making periodic DNS queries.
     private val dnsLookupThread = thread {
-        try {
-            while (true) {
-                logger.info("querying dns server...")
-                dnsLookup()
-                sleep(lookupAgainTime)
+        retryExecutor.execute({ UnexpectedBrokerException() }, {
+            try {
+                while (true) {
+                    logger.info("[{}] querying dns server", selfInetAddress.hostAddress)
+                    dnsLookup()
+                    sleep(lookupAgainTime)
+                }
+            } catch (ex: Exception) {
+                if (ex is InterruptedException) {
+                    logger.error("[{}] dns lookup interrupted", selfInetAddress.hostAddress)
+                } else {
+                    throw ex
+                }
             }
-        } catch (e: Exception) {
-            if (e is InterruptedException) {
-                logger.info("dns lookup interrupted.")
-            } else {
-                logger.info("dns lookup error: " + e.stackTrace)
-            }
-        }
+        })
     }
 
     /**
-     * Make a DNS query and add all new IP addresses received as peers.
+     * Make a DNS query and add all new IP addresses received as neighbours.
      */
     private fun dnsLookup() {
         val neighborsIp = InetAddress.getAllByName(SERVICE_NAME)
-            .filter { it is Inet4Address && it != nodeInetAddress }
+            .filter { it is Inet4Address && it != selfInetAddress }
+        val currentNeighbors = neighborsIp
             .map { Neighbor(it) }
             .toSet()
-        neighbors.addAll(neighborsIp)
-        logger.info("dns lookup success: neighbours found -> {}", neighborsIp.joinToString(", "))
+        neighbors.addAll(currentNeighbors)
+        logger.info("[{}] dns lookup:: {}", selfInetAddress.hostAddress, neighborsIp.joinToString(" , "))
     }
 
     /**
@@ -63,5 +71,7 @@ class DNSServiceDiscovery(
 
         // Docker compose service name, used to lookup DNS.
         private val SERVICE_NAME = Environment.getServiceName()
+
+        private const val DEFAULT_LOOKUP_AGAIN_TIME = 5000L
     }
 }
