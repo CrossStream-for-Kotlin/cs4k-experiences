@@ -12,6 +12,7 @@ import cs4k.prototype.broker.common.Subscriber
 import cs4k.prototype.broker.option3.ConnectionState.CONNECTED
 import cs4k.prototype.broker.option3.ConnectionState.DISCONNECTED
 import cs4k.prototype.broker.option3.ConnectionState.ZOMBIE
+import cs4k.prototype.broker.option3.serviceDiscovery.MulticastServiceDiscovery
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
