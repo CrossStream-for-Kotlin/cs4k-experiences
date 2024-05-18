@@ -26,6 +26,8 @@ import kotlin.time.Duration.Companion.milliseconds
 // - RabbitMQ Java client
 // - RabbitMQ Streams (1 stream - 1 consumer)
 // - Support for RabbitMQ Cluster
+
+// @Component
 class BrokerRabbitStreams(
     private val subscribeDelay: Duration = 250.milliseconds
 ) : Broker {

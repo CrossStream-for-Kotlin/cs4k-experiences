@@ -2,7 +2,7 @@ package cs4k.prototype.broker
 
 import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.Event
-import cs4k.prototype.broker.option2.rabbitmq.BrokerRabbitDirectExchange
+import cs4k.prototype.broker.option1.BrokerSQL
 import org.junit.jupiter.api.AfterAll
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
@@ -503,8 +503,8 @@ class BrokerTests {
 
         // ACT
         val latch = CountDownLatch(topicsAndMessage.size)
-        var receivedMessages = mutableListOf<String>()
-        val unsubscribers = mutableListOf<() -> Unit>()
+        val receivedMessages = mutableListOf<String>()
+        val unsubscribes = mutableListOf<() -> Unit>()
         topicsAndMessage.forEach { entry ->
             val un = getRandomBrokerInstance().subscribe(entry.key) { event ->
                 // Assert
@@ -513,7 +513,7 @@ class BrokerTests {
                     latch.countDown()
                 }
             }
-            unsubscribers.add(un)
+            unsubscribes.add(un)
         }
 
         latch.await()
@@ -521,10 +521,10 @@ class BrokerTests {
         assertTrue(latch.await(10000, TimeUnit.MILLISECONDS))
 
         // Assert
-        unsubscribers.forEach { it() }
+        unsubscribes.forEach { it() }
         assertEquals(receivedMessages.toSet().toList().size, topicsAndMessage.map { it.value }.size)
         receivedMessages.toSet().toList().forEach {
-            assertTrue(topicsAndMessage.map { it -> it.value }.contains(it))
+            assertTrue(topicsAndMessage.map { pair -> pair.value }.contains(it))
         }
     }
 
@@ -1167,14 +1167,12 @@ class BrokerTests {
 
         private fun createBrokerInstance() =
             // - PostgreSQL
-            // Broker()
+            BrokerSQL()
 
-            // - Redis
-            // BrokerRedis()
+        // - Redis
+        // BrokerRedis()
 
-            // - RabbitMQ
-            BrokerRabbitDirectExchange()
-        // BrokerRabbitFanoutExchange()
+        // - RabbitMQ
         // BrokerRabbitStreams()
 
         private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { createBrokerInstance() }

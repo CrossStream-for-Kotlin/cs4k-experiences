@@ -7,7 +7,8 @@ import com.rabbitmq.client.DefaultConsumer
 import com.rabbitmq.client.Envelope
 import cs4k.prototype.broker.Broker
 import cs4k.prototype.broker.common.AssociatedSubscribers
-import cs4k.prototype.broker.common.BrokerException
+import cs4k.prototype.broker.common.BrokerException.BrokerLostConnectionException
+import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
@@ -20,16 +21,18 @@ import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 
 // [NOTE] Discontinued, mainly, because:
-//      - Cannot garantee that all nodes will have the same id for the same event.
-//      - Cenario of multiple publishers and multiple brokers the events can be received 2 or more times.
+//      - Cannot guarantee that all nodes will have the same id for the same event.
+//      - Scenario of multiple publishers and multiple brokers the events can be received 2 or more times.
 //      - Possible deadlocks when having multiple brokers.
 //      - Possible data loss when having multiple brokers.
-//      - All queues binded to the exchange will receive the message even though they don't have subscribers to the topic.
+//      - All queues bound to the exchange will receive the message even though they don't have subscribers to the topic.
 
 // - RabbitMQ Java client
 // - RabbitMQ Queues (1 exchange - n queues)
 // - Exchange of type fanout and queues of type quorum
 // - Support for RabbitMQ Cluster
+
+// @Component
 class BrokerRabbitFanoutExchange : Broker {
 
     // Association between topics and subscribers lists.
@@ -44,7 +47,7 @@ class BrokerRabbitFanoutExchange : Broker {
     // Name of exchange used to publish messages to.
     private val broadCastExchange = "cs4k-notifications"
 
-    // Indetify Broker instace
+    // Identify Broker instance
     private val brokerNumber = UUID.randomUUID().toString()
 
     // Consumer tag identifying the broker as consumer.
@@ -106,7 +109,7 @@ class BrokerRabbitFanoutExchange : Broker {
             if (event.topic == adminTopic) {
                 val latestEvent = latestTopicEvents.getLatestReceivedEvent(event.message)
                 logger.info(
-                    "Request Latest Event received to routinkg key {}  in the consumertag {} and exchange {}",
+                    "Request Latest Event received to routing key {}  in the consumer tag {} and exchange {}",
                     envelope.routingKey,
                     consumerTag,
                     envelope.exchange
@@ -176,14 +179,14 @@ class BrokerRabbitFanoutExchange : Broker {
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     override fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
-        if (isShutdown.get()) throw BrokerException.BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
+        if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
 
         val subscriber = Subscriber(UUID.randomUUID(), handler)
         associatedSubscribers.addToKey(topic, subscriber)
         logger.info("new subscriber topic '{}' id '{} in broker {}", topic, subscriber.id, brokerNumber)
-        val handler = getLastEvent(topic)
-        if (handler != null) {
-            subscriber.handler(handler)
+        val lastEvent = getLastEvent(topic)
+        if (lastEvent != null) {
+            subscriber.handler(lastEvent)
         } else {
             requestLatestEvent(topic)
         }
@@ -207,7 +210,7 @@ class BrokerRabbitFanoutExchange : Broker {
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     override fun publish(topic: String, message: String, isLastMessage: Boolean) {
-        if (isShutdown.get()) throw BrokerException.BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
+        if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
         logger.info("publishing message to topic '{} with message {} in broker {}'", topic, message, brokerNumber)
         notify(topic, message, isLastMessage)
     }
@@ -222,7 +225,7 @@ class BrokerRabbitFanoutExchange : Broker {
             consumerChannelPool.close()
             publisherChannelPool.close()
         } else {
-            throw BrokerException.BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
+            throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
         }
     }
 
@@ -232,7 +235,7 @@ class BrokerRabbitFanoutExchange : Broker {
      * @param topic The topic name.
      */
     private fun requestLatestEvent(topic: String) {
-        retryExecutor.execute({ BrokerException.BrokerLostConnectionException() }, {
+        retryExecutor.execute({ BrokerLostConnectionException() }, {
             val requestEvent = createAdminEvent(topic)
             val responseChannel = consumerChannelPool.getChannel()
             responseChannel.basicPublish(broadCastExchange, "", null, BrokerSerializer.serializeEventToJson(requestEvent).toByteArray())
@@ -257,7 +260,7 @@ class BrokerRabbitFanoutExchange : Broker {
      * Declares the exchange and queue and binds the queue to the exchange. Starts consuming the queue.
      */
     private fun listen() {
-        retryExecutor.execute({ BrokerException.BrokerLostConnectionException() }, {
+        retryExecutor.execute({ BrokerLostConnectionException() }, {
             val channel = consumerChannelPool.getChannel()
             channel.exchangeDeclare(broadCastExchange, "fanout")
             channel.queueDeclare(
@@ -283,7 +286,7 @@ class BrokerRabbitFanoutExchange : Broker {
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     private fun notify(topic: String, message: String, isLastMessage: Boolean) {
-        retryExecutor.execute(exception = { BrokerException.BrokerLostConnectionException() }, action = {
+        retryExecutor.execute(exception = { BrokerLostConnectionException() }, action = {
             val channel = publisherChannelPool.getChannel()
             channel.confirmSelect()
             val id = latestTopicEvents.getNextEventId(topic)
@@ -301,7 +304,7 @@ class BrokerRabbitFanoutExchange : Broker {
      * @throws BrokerLostConnectionException If the broker lost connection to the database.
      */
     private fun notify(event: Event) {
-        retryExecutor.execute({ BrokerException.BrokerLostConnectionException() }, {
+        retryExecutor.execute({ BrokerLostConnectionException() }, {
             val channel = publisherChannelPool.getChannel()
             latestTopicEvents.setLatestSentEvent(event.topic, event)
             channel.basicPublish(broadCastExchange, event.topic, null, BrokerSerializer.serializeEventToJson(event).toByteArray())

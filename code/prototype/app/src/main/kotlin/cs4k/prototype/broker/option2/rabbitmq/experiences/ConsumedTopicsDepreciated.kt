@@ -21,7 +21,6 @@ class ConsumedTopicsDepreciated {
 
     /**
      * Represents the information regarding an event.
-     * @param id Sequential event ID.
      * @param payload The message of the event joined with the indicator if the message is the last one of the topic.
      */
     private class EventInfo(

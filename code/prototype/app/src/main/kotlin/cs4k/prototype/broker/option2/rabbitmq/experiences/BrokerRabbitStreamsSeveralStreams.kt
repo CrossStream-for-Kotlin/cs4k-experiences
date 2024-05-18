@@ -34,14 +34,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
-// @Component
-/**
- * Discontinued, because:
- *  - Consuming from several streams requires several channels, which in turn uses up several resources.
- */
+// [NOTE] Discontinued, mainly, because:
+//      - Consuming from several streams requires several channels, which in turn uses up several resources.
+
 // - RabbitMQ Java client
 // - RabbitMQ Streams (n streams - n consumers)
 // - Support for RabbitMQ Cluster
+
+// @Component
 class BrokerRabbitStreamsSeveralStreams(
     private val subscribeDelay: Duration = 250.milliseconds,
     private val withholdTimeInMillis: Long = 5000

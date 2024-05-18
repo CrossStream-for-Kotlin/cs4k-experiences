@@ -22,8 +22,8 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 // [NOTE] Discontinued, mainly, because:
-//      - Cannot garantee that all nodes will have the same id for the same event.
-//      - Cenario of multiple publishers and multiple brokers the events can be received 2 or more times.
+//      - Cannot guarantee that all nodes will have the same id for the same event.
+//      - Scenario of multiple publishers and multiple brokers the events can be received 2 or more times.
 
 // - RabbitMQ Java client
 // - RabbitMQ Queues (1 exchange - n queues)
@@ -45,7 +45,7 @@ class BrokerRabbitDirectExchange : Broker {
     // Exchange name for broadcasting messages.
     private val broadCastExchange = "cs4k-notifications"
 
-    // Indetify Broker instace
+    // Identify Broker instance
     val brokerNumber = UUID.randomUUID().toString()
 
     // Consumer tag identifying the broker as consumer.
@@ -147,8 +147,8 @@ class BrokerRabbitDirectExchange : Broker {
                 }
 
                 latestEvent.id > event.id -> {
-                    val recenteEvent = event.copy(id = latestEvent.id + 1)
-                    processMessage(recenteEvent)
+                    val recentEvent = event.copy(id = latestEvent.id + 1)
+                    processMessage(recentEvent)
                     logger.info("older event received, thrown away")
                 }
             }
@@ -278,7 +278,7 @@ class BrokerRabbitDirectExchange : Broker {
 
     /**
      * Listen for notifications and creates the exchange, queue and binds the queue to the exchange. Also consumes the queue.
-     * Declares a exchange.
+     * Declares an exchange.
      * Declares a queue and binds it to the exchange.
      * Consumes the queue.
      * @throws BrokerLostConnectionException If the broker lost connection to the database.

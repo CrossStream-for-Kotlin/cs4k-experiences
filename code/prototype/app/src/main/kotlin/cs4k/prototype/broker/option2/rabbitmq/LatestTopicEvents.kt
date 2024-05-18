@@ -96,8 +96,8 @@ class LatestTopicEvents {
     }
 
     /**
-     * Add a event to the list of events from a topic.
-     * wihtout repetions of events
+     * Add an event to the list of events from a topic.
+     * without repetitions of events
      */
     fun setEventToTopic(topic: String, event: Event) = lock.withLock {
         val events = mapAllEventsFromTopic[topic] ?: mutableListOf()
@@ -153,7 +153,7 @@ class LatestTopicEvents {
      */
     fun getAllTopicsAndEvents(): List<Pair<String, Event?>> {
         lock.withLock {
-            return map.map { (topic, events) ->
+            return map.map { (topic, _) ->
                 Pair(topic, getLatestEvent(topic))
             }
         }
