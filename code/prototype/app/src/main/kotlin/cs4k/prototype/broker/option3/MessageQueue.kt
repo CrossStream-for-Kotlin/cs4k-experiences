@@ -12,6 +12,7 @@ import kotlin.time.Duration
 /**
  * Thread-safe class for message communication between coroutines, through message queues.
  * Communication uses the FIFO (first in first out) criteria.
+ *
  * @property capacity The maximum number of messages stored in queue.
  */
 class MessageQueue<T>(private val capacity: Int) {

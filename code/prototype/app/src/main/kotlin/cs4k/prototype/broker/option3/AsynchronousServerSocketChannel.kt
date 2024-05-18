@@ -8,7 +8,9 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * Suspend function that accepts an inbound connection.
+ * Suspend function that accepts inbound connections, build on top of [AsynchronousServerSocketChannel].
+ *
+ * @return The [AsynchronousSocketChannel] of the established inbound connection.
  */
 suspend fun AsynchronousServerSocketChannel.acceptSuspend(): AsynchronousSocketChannel {
     return suspendCancellableCoroutine { continuation ->

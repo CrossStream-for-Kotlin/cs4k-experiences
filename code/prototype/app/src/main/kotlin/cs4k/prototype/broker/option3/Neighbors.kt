@@ -25,16 +25,6 @@ class Neighbors {
     }
 
     /**
-     * Get a neighbor.
-     *
-     * @param inetAddress The IP address.
-     * @return The neighbor or null if it does not exist.
-     */
-    fun getBy(inetAddress: InetAddress) = lock.withLock {
-        set.find { it.inetAddress == inetAddress }
-    }
-
-    /**
      * Add a neighbor if it doesn't exist yet.
      *
      * @param neighbor The neighbor to add.
@@ -70,14 +60,38 @@ class Neighbors {
     }
 
     /**
-     * Update a neighbor.
+     * Updates a neighbor's inbound connection. If it doesn't exist, it is still added.
      *
-     * @param neighbor The neighbor to update.
+     * @param inetAddress The inet address (IP) of the neighbor.
+     * @param inboundConnection The updated inbound connection.
+     * @return The updated neighbour.
      */
-    fun updateAndGet(neighbor: Neighbor) =
+    fun updateAndGet(inetAddress: InetAddress, inboundConnection: InboundConnection): Neighbor =
+        lock.withLock {
+            val neighbor = set.find { it.inetAddress == inetAddress }
+            return@withLock if (neighbor != null) {
+                remove(neighbor)
+                val updatedNeighbor = neighbor.copy(inboundConnection = inboundConnection)
+                add(updatedNeighbor)
+                updatedNeighbor
+            } else {
+                val newNeighbor = Neighbor(
+                    inetAddress = inetAddress,
+                    inboundConnection = inboundConnection
+                )
+                add(newNeighbor)
+                newNeighbor
+            }
+        }
+
+    /**
+     * Update a neighbor. If it doesn't exist, it is still added.
+     *
+     * @param neighbor The updated neighbour.
+     */
+    fun update(neighbor: Neighbor) =
         lock.withLock {
             remove(neighbor)
             add(neighbor)
-            getBy(neighbor.inetAddress)
         }
 }

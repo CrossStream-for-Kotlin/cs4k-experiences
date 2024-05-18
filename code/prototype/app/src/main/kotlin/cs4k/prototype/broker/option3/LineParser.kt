@@ -17,16 +17,12 @@ class LineParser {
     // The previous char, if it is a terminator.
     private var lastTerminator: Char? = null
 
-    // Provide a sequence of chars to th parser.
     fun offer(chars: CharBuffer) {
         while (chars.position() != chars.limit()) {
             offer(chars.get())
         }
     }
 
-    /**
-     * Checks if a string is available, and returns it if so.
-     */
     fun poll(): String? = if (lines.isNotEmpty()) {
         lines.poll()
     } else {
@@ -54,7 +50,7 @@ class LineParser {
         stringBuilder.clear()
     }
 
-    companion object {
-        fun isTerminator(c: Char) = c == '\n' || c == '\r'
+    private companion object {
+        private fun isTerminator(c: Char) = c == '\n' || c == '\r'
     }
 }

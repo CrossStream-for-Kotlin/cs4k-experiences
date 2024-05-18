@@ -13,14 +13,16 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * Suspend function that build onm top of asynchronous function to create a connection.
+ * Suspend function that establish outbound connections, build on top of [AsynchronousSocketChannel].
  * If coroutine is cancelled, closes socket.
+ *
+ * @param socketAddress The socket address to connect to.
  */
-suspend fun AsynchronousSocketChannel.connectSuspend(address: InetSocketAddress) {
+suspend fun AsynchronousSocketChannel.connectSuspend(socketAddress: InetSocketAddress) {
     return try {
         suspendCancellableCoroutine { continuation ->
             this.connect(
-                address,
+                socketAddress,
                 null,
                 object : CompletionHandler<Void?, Unit?> {
                     override fun completed(result: Void?, attachment: Unit?) {
@@ -43,7 +45,10 @@ suspend fun AsynchronousSocketChannel.connectSuspend(address: InetSocketAddress)
 }
 
 /**
- * Suspend function that build on top of asynchronous function to read messages.
+ * Suspend function that reads messages from inbound connections, build on top of [AsynchronousSocketChannel].
+ *
+ * @param byteBuffer The ByteBuffer to store the content of the received message.
+ * @return The length of the received message.
  */
 suspend fun AsynchronousSocketChannel.readSuspend(byteBuffer: ByteBuffer): Int {
     val readLength = suspendCancellableCoroutine { continuation ->
@@ -67,7 +72,10 @@ suspend fun AsynchronousSocketChannel.readSuspend(byteBuffer: ByteBuffer): Int {
 }
 
 /**
- * Suspend function that build on top of asynchronous function to write messages.
+ * Suspend function that writes messages to outbound connections, build on top of [AsynchronousSocketChannel].
+ *
+ * @param text The text to write.
+ * @return Returns true if the text written matches what was intended to be written.
  */
 suspend fun AsynchronousSocketChannel.writeSuspend(text: String): Boolean {
     val textWithTerminationCharacter = if (text.last() == '\n' || text.last() == '\r') text else text + "\n"

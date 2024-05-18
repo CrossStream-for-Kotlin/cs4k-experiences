@@ -8,6 +8,9 @@ import java.nio.charset.CoderResult
 
 /**
  * Provides a suspend `readLine` interface on top of a suspend function that read bytes.
+ *
+ * @param bufferLength The buffer length.
+ * @property reader The suspend `readLine` function.
  */
 class LineReader(
     // The underlying read function´.
