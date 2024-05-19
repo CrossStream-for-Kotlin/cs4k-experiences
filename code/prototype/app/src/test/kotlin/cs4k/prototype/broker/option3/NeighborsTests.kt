@@ -13,7 +13,6 @@ import java.net.InetAddress
 
 class NeighborsTests {
 
-
     private lateinit var neighbors: Neighbors
 
     @BeforeEach
@@ -119,22 +118,21 @@ class NeighborsTests {
         assertEquals(inboundConnection2, allNeighbors.first().inboundConnection)
     }
 
-
     @Test
     fun `stress test adding multiple neighbors`() {
         runBlocking {
-
-
             val jobs = mutableListOf<Job>()
 
             repeat(NUMBER_COROUTINES) { coroutineIndex ->
-                jobs.add(launch(Dispatchers.Default) {
-                    repeat(NUMBER_NEIGHBORS) { operationIndex ->
-                        val address = InetAddress.getByName("192.168.0.${coroutineIndex % 255}")
-                        val neighbor = Neighbor(address, inboundConnection = mock(InboundConnection::class.java))
-                        neighbors.add(neighbor)
+                jobs.add(
+                    launch(Dispatchers.Default) {
+                        repeat(NUMBER_NEIGHBORS) { operationIndex ->
+                            val address = InetAddress.getByName("192.168.0.${coroutineIndex % 255}")
+                            val neighbor = Neighbor(address, inboundConnection = mock(InboundConnection::class.java))
+                            neighbors.add(neighbor)
+                        }
                     }
-                })
+                )
             }
 
             jobs.joinAll()
@@ -149,52 +147,54 @@ class NeighborsTests {
             assertEquals(allNeighbors.size, distinctNeighbors.size)
         }
     }
+
     @Test
     fun `stress test adding multiple neighbors and then update or remove randomly`() = runBlocking {
         val addJobs = mutableListOf<Job>()
         val updateRemoveJobs = mutableListOf<Job>()
-
 
         val ipAddresses = (0 until NUMBER_NEIGHBORS).map { i ->
             InetAddress.getByName("192.168.${i / 255}.${i % 255}")
         }
 
         repeat(NUMBER_COROUTINES) { coroutineIndex ->
-            addJobs.add(launch(Dispatchers.Default) {
-                val start = coroutineIndex * (NUMBER_NEIGHBORS / NUMBER_COROUTINES)
-                val end = start + (NUMBER_NEIGHBORS / NUMBER_COROUTINES)
-                for (i in start until end) {
-                    val address = ipAddresses[i]
-                    val neighbor = Neighbor(address, inboundConnection = mock(InboundConnection::class.java))
-                    neighbors.add(neighbor)
+            addJobs.add(
+                launch(Dispatchers.Default) {
+                    val start = coroutineIndex * (NUMBER_NEIGHBORS / NUMBER_COROUTINES)
+                    val end = start + (NUMBER_NEIGHBORS / NUMBER_COROUTINES)
+                    for (i in start until end) {
+                        val address = ipAddresses[i]
+                        val neighbor = Neighbor(address, inboundConnection = mock(InboundConnection::class.java))
+                        neighbors.add(neighbor)
+                    }
                 }
-            })
+            )
         }
 
         addJobs.joinAll()
-
 
         val allNeighbors = neighbors.getAll()
         assertEquals(NUMBER_NEIGHBORS, allNeighbors.size)
 
         repeat(NUMBER_COROUTINES) { coroutineIndex ->
-            updateRemoveJobs.add(launch(Dispatchers.Default) {
-                val start = coroutineIndex * (NUMBER_NEIGHBORS / NUMBER_COROUTINES)
-                val end = start + (NUMBER_NEIGHBORS / (2 * NUMBER_COROUTINES))
-                for (i in start until end) {
-                    val address = ipAddresses[i]
-                    if (i % 2 == 0) {
-                        neighbors.updateAndGet(address, mock(InboundConnection::class.java))
-                    } else {
-                        val neighbor = Neighbor(address, inboundConnection = mock(InboundConnection::class.java))
-                        neighbors.remove(neighbor)
+            updateRemoveJobs.add(
+                launch(Dispatchers.Default) {
+                    val start = coroutineIndex * (NUMBER_NEIGHBORS / NUMBER_COROUTINES)
+                    val end = start + (NUMBER_NEIGHBORS / (2 * NUMBER_COROUTINES))
+                    for (i in start until end) {
+                        val address = ipAddresses[i]
+                        if (i % 2 == 0) {
+                            neighbors.updateAndGet(address, mock(InboundConnection::class.java))
+                        } else {
+                            val neighbor = Neighbor(address, inboundConnection = mock(InboundConnection::class.java))
+                            neighbors.remove(neighbor)
+                        }
                     }
                 }
-            })
+            )
         }
 
         updateRemoveJobs.joinAll()
-
 
         val finalNeighbors = neighbors.getAll()
         val distinctNeighbors = finalNeighbors.distinctBy { it.inetAddress }
@@ -205,7 +205,4 @@ class NeighborsTests {
         private val NUMBER_COROUTINES = 100
         private val NUMBER_NEIGHBORS = 1000
     }
-
 }
-
-

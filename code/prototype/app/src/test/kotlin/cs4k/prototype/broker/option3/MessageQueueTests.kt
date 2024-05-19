@@ -5,18 +5,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.time.Duration.Companion.microseconds
 import kotlin.time.Duration.Companion.seconds
 
 class MessageQueueTests {
 
     private val waitTime = 10.seconds
-
 
     @Test
     fun `enqueue and dequeue single message`() = runBlocking {
@@ -52,7 +49,6 @@ class MessageQueueTests {
         job.join()
     }
 
-
     @Test
     fun `enqueue when queue is full`() = runBlocking {
         val queue = MessageQueue<Int>(capacity = 2)
@@ -84,13 +80,12 @@ class MessageQueueTests {
         job.join()
     }
 
-
     @Test
     fun `messageQueue requires`() {
         assertFailsWith<IllegalArgumentException> { MessageQueue<Int>(0) }
         runBlocking {
             val messageQueue = MessageQueue<Int>(1)
-            assertFailsWith<IllegalArgumentException> { messageQueue.dequeue(0.seconds)}
+            assertFailsWith<IllegalArgumentException> { messageQueue.dequeue(0.seconds) }
         }
     }
 
@@ -204,5 +199,4 @@ class MessageQueueTests {
             assertFailsWith<TimeoutCancellationException> { messageQueue.dequeue(2.seconds) }
         }
     }
-
 }

@@ -28,6 +28,7 @@ import org.springframework.stereotype.Component
 import java.net.ConnectException
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.NetworkInterface
 import java.net.SocketException
 import java.nio.channels.AsynchronousServerSocketChannel
 import java.nio.channels.AsynchronousSocketChannel
@@ -37,7 +38,10 @@ import kotlin.concurrent.thread
 import kotlin.time.Duration
 
 @Component
-class BrokerOption3 : Broker {
+class BrokerOption3(
+    hostname: String = Environment.getHostname(),
+    networkInterface: NetworkInterface? = null
+) : Broker {
 
     // Shutdown state.
     private var isShutdown = false
@@ -49,10 +53,14 @@ class BrokerOption3 : Broker {
     private val neighbors = Neighbors()
 
     // The node's own IP address.
-    private val selfIp = InetAddress.getByName(Environment.getHostname()).hostAddress
+    private val selfIp = InetAddress.getByName(hostname).hostAddress
 
     // Service discovery configuration.
-    private val serviceDiscovery = MulticastServiceDiscovery(neighbors, selfIp) /* DNSServiceDiscovery(neighbors) */
+    private val serviceDiscovery = MulticastServiceDiscovery(
+        neighbors,
+        selfIp,
+        networkInterface = networkInterface
+    ) /* DNSServiceDiscovery(neighbors) */
 
     // The queue of events to be processed.
     private val eventsToProcess = MessageQueue<Event>(EVENTS_TO_PROCESS_CAPACITY)
@@ -303,6 +311,10 @@ class BrokerOption3 : Broker {
     private fun unsubscribe(topic: String, subscriber: Subscriber) {
         associatedSubscribers.removeIf(topic, { sub -> sub.id == subscriber.id })
         logger.info("[{}] unsubscribe topic '{}' id '{}'", selfIp, topic, subscriber.id)
+    }
+
+    fun toTest() {
+        logger.info("The neighbiors of ip {} are {}", selfIp, neighbors.getAll().forEach { it.inetAddress })
     }
 
     private companion object {

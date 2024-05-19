@@ -11,6 +11,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.MulticastSocket
 import java.net.NetworkInterface
+import java.util.*
 
 /**
  * Responsible for service discovery through multicast, i.e.:
@@ -24,7 +25,8 @@ import java.net.NetworkInterface
 class MulticastServiceDiscovery(
     private val neighbors: Neighbors,
     private val selfIp: String,
-    private val sendDatagramPacketAgainTime: Long = DEFAULT_SEND_DATAGRAM_PACKET_AGAIN_TIME
+    private val sendDatagramPacketAgainTime: Long = DEFAULT_SEND_DATAGRAM_PACKET_AGAIN_TIME,
+    private val networkInterface: NetworkInterface? = null
 ) {
 
     // Multicast inet address (IP).
@@ -43,9 +45,10 @@ class MulticastServiceDiscovery(
     private val listenMulticastSocketThread = Thread {
         retryExecutor.execute({ BrokerException.UnexpectedBrokerException() }, {
             val multicastSocket = MulticastSocket(MULTICAST_PORT)
-            val networkInterface = getActiveMulticastNetworkInterface()
-            joinMulticastGroup(multicastSocket, networkInterface)
-            listenMulticastSocket(multicastSocket, networkInterface)
+            // val networkInterface = getActiveMulticastNetworkInterface()
+            val network = networkInterface ?: getActiveMulticastNetworkInterface()
+            joinMulticastGroup(multicastSocket, network)
+            listenMulticastSocket(multicastSocket, network)
         })
     }
 
@@ -92,6 +95,8 @@ class MulticastServiceDiscovery(
                 if (remoteInetAddress.hostAddress != selfIp) {
                     neighbors.add(Neighbor(remoteInetAddress))
                     logger.info("[{}] <++ '{}'", selfIp, remoteInetAddress)
+                } else {
+                    logger.info("[{}] ignoring packet from self", selfIp)
                 }
             } catch (ex: Exception) {
                 multicastSocket.leaveGroup(multicastInetSocketAddress, networkInterface)
@@ -118,6 +123,17 @@ class MulticastServiceDiscovery(
                 val datagramPacket = DatagramPacket(messageBytes, messageBytes.size, multicastInetSocketAddress)
                 multicastSocket.send(datagramPacket)
                 logger.info("[{}] ++> '{}'", selfIp, selfIp)
+               /* val inetAddresses = networkInterface?.inetAddresses
+                if (inetAddresses != null) {
+                    while (inetAddresses.hasMoreElements()) {
+                        val inetAddress = inetAddresses.nextElement()
+                        if (!inetAddress.isLoopbackAddress) {
+                            val datagramPacket = DatagramPacket(messageBytes, messageBytes.size, InetSocketAddress(inetAddress, MULTICAST_PORT))
+                            multicastSocket.send(datagramPacket)
+                            logger.info("[{}] ++> '{}'", inetAddress.hostAddress, selfIp)
+                        }
+                    }
+                }*/
                 sleep(sendDatagramPacketAgainTime)
             } catch (ex: Exception) {
                 multicastSocket.close()
@@ -164,6 +180,6 @@ class MulticastServiceDiscovery(
         private const val INBOUND_BUFFER_SIZE = 1024
         private const val TIME_TO_LIVE = 10
         private const val MESSAGE = "HELLO"
-        private const val DEFAULT_SEND_DATAGRAM_PACKET_AGAIN_TIME = 60_000L
+        private const val DEFAULT_SEND_DATAGRAM_PACKET_AGAIN_TIME = 10_000L
     }
 }
