@@ -12,6 +12,7 @@ import cs4k.prototype.broker.common.Subscriber
 import cs4k.prototype.broker.option3.ConnectionState.CONNECTED
 import cs4k.prototype.broker.option3.ConnectionState.DISCONNECTED
 import cs4k.prototype.broker.option3.ConnectionState.ZOMBIE
+import cs4k.prototype.broker.option3.serviceDiscovery.MulticastServiceDiscovery
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -51,8 +52,7 @@ class BrokerOption3 : Broker {
     private val selfIp = InetAddress.getByName(Environment.getHostname()).hostAddress
 
     // Service discovery configuration.
-    private val serviceDiscovery = MulticastServiceDiscovery(neighbors, selfIp)
-    // DNSServiceDiscovery(neighbors)
+    private val serviceDiscovery = MulticastServiceDiscovery(neighbors, selfIp) /* DNSServiceDiscovery(neighbors) */
 
     // The queue of events to be processed.
     private val eventsToProcess = MessageQueue<Event>(EVENTS_TO_PROCESS_CAPACITY)

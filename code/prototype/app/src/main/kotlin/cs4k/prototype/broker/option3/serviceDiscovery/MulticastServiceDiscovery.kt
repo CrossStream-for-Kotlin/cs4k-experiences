@@ -1,7 +1,9 @@
-package cs4k.prototype.broker.option3
+package cs4k.prototype.broker.option3.serviceDiscovery
 
 import cs4k.prototype.broker.common.BrokerException
 import cs4k.prototype.broker.common.RetryExecutor
+import cs4k.prototype.broker.option3.Neighbor
+import cs4k.prototype.broker.option3.Neighbors
 import org.slf4j.LoggerFactory
 import java.lang.Thread.sleep
 import java.net.DatagramPacket
