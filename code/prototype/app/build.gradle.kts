@@ -65,11 +65,6 @@ tasks.withType<Test> {
     useJUnitPlatform()
 }
 
-tasks.named("check") {
-    dependsOn("dbTestsWait")
-    finalizedBy("dbTestsDown")
-}
-
 /**
  * PostgreSQl DB related tasks.
  */
@@ -108,7 +103,7 @@ task<Exec>("redisDown") {
 /**
  * RabbitMQ related tasks
  */
-task<Exec>("rabbitUp") {
+/* task<Exec>("rabbitUp") {
     commandLine(
         "docker-compose",
         "-f",
@@ -118,7 +113,7 @@ task<Exec>("rabbitUp") {
         "--build",
         "rabbit-mq"
     )
-}
+} */
 
 task<Exec>("rabbitClusterUp") {
     val command =

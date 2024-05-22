@@ -30,7 +30,7 @@ services:
     # command: [ "scripts/wait-for-redis.sh", "redis", "6379" ]
     environment:
       PORT: 8080
-      DB_URL: "jdbc:postgresql://postgres:5432/db?user=dbuser&password=changeit"
+      POSTGRESQL_DB_URL: "jdbc:postgresql://postgres:5432/db?user=dbuser&password=changeit"
       REDIS_PORT: "6379"
       REDIS_HOST: "redis"
 
@@ -41,6 +41,8 @@ services:
       dockerfile: tests/Dockerfile-nginx
     ports:
       - "8088:8088"
+    depends_on:
+      - spring-service
 
   # Just a machine running ubuntu, with 'dig' installed so that we can observe the docker compose environment.
   ubuntu:

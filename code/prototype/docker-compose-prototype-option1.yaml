@@ -22,7 +22,7 @@ services:
     command: ["scripts/wait-for-postgres.sh", "localhost"]
     environment:
       PORT: 8080
-      DB_URL: "jdbc:postgresql://postgres:5432/db?user=dbuser&password=changeit"
+      POSTGRESQL_DB_URL: "jdbc:postgresql://postgres:5432/db?user=dbuser&password=changeit"
 
   nginx:
     container_name: nginx
@@ -31,6 +31,8 @@ services:
       dockerfile: tests/Dockerfile-nginx
     ports:
       - "8088:8088"
+    depends_on:
+      - spring-service
 
   # Just a machine running ubuntu, with 'dig' installed so that we can observe the docker compose environment.
   ubuntu:
