@@ -1,7 +1,5 @@
 package cs4k.prototype.broker.common
 
-import java.sql.Timestamp
-
 /**
  * Represents an event that can be published to a topic.
  *
@@ -9,14 +7,12 @@ import java.sql.Timestamp
  * @property id The identifier of the event.
  * @property message The message of the event.
  * @property isLast If the event is the last one.
- * @property timestamp The timestamp when the event was created.
  */
 data class Event(
     val topic: String,
     val id: Long,
     val message: String,
-    val isLast: Boolean = false,
-    val timestamp: Timestamp = Timestamp(System.currentTimeMillis())
+    val isLast: Boolean = false
 ) {
     /**
      * Represents the events properties.
@@ -27,7 +23,6 @@ data class Event(
         TOPIC("topic"),
         ID("id"),
         MESSAGE("message"),
-        IS_LAST("is_last"),
-        TIMESTAMP("timestamp");
+        IS_LAST("is_last");
     }
 }
