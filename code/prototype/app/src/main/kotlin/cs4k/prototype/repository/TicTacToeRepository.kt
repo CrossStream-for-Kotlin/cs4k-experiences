@@ -13,23 +13,6 @@ import java.sql.Statement
 @Component
 class TicTacToeRepository {
 
-    init {
-        createTables()
-    }
-
-    /**
-     * Create the tables if they don't exist.
-     */
-    private fun createTables() {
-        createConnection().use { conn ->
-            val stm = conn.createStatement()
-            stm.execute(
-                "create table if not exists Games(id int generated always as identity primary key, board jsonb not null);" +
-                    "create table if not exists Waiting(player varchar(16) primary key, gameId int unique)"
-            )
-        }
-    }
-
     data class WaitingRegistry(
         val player: String,
         val gameId: Int
