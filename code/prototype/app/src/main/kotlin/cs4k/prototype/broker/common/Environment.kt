@@ -8,7 +8,7 @@ import cs4k.prototype.broker.common.BrokerException.EnvironmentVariableException
 object Environment {
 
     // Name of environment variable for PostgreSQL database URL.
-    private const val KEY_POSTGRESQL_DB_URL = "DB_URL" // "POSTGRESQL_DB_URL"
+    private const val KEY_POSTGRESQL_DB_URL = "POSTGRESQL_DB_URL"
 
     // Name of environment variable for Redis host.
     private const val KEY_REDIS_HOST = "REDIS_HOST"
