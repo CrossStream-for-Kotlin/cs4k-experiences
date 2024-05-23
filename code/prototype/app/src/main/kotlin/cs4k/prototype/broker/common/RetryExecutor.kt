@@ -16,11 +16,12 @@ class RetryExecutor(
     /**
      * Execute an action with retry mechanism.
      *
-     * @param action The action to execute.
      * @param exception The exception to throw if the action fails after retries.
+     * @param action The action to execute.
      * @param retryCondition The condition to retry the action.
-     * @return The result of the action or 'Unit' if not to repeat.
+     * @return The result of the action.
      * @throws BrokerException If the action cannot be executed after retries.
+     * @throws Exception If not to repeat according to retry condition.
      */
     fun <T> execute(
         exception: () -> BrokerException,
@@ -31,7 +32,7 @@ class RetryExecutor(
             try {
                 return action()
             } catch (e: Exception) {
-                if (!isToRetry(retryCondition, e)) return Unit as T // throw exception
+                if (!isToRetry(retryCondition, e)) throw e
             }
         }
         throw exception()
@@ -40,11 +41,12 @@ class RetryExecutor(
     /**
      * Execute a suspend action with retry mechanism.
      *
-     * @param action The suspend action to execute.
      * @param exception The exception to throw if the action fails after retries.
+     * @param action The suspend action to execute.
      * @param retryCondition The condition to retry the action.
-     * @return The result of the action or 'Unit' if not to repeat.
+     * @return The result of the action.
      * @throws BrokerException If the action cannot be executed after retries.
+     * @throws Exception If not to repeat according to retry condition.
      */
     suspend fun <T> suspendExecute(
         exception: () -> BrokerException,
@@ -55,7 +57,7 @@ class RetryExecutor(
             try {
                 return action()
             } catch (e: Exception) {
-                if (!isToRetry(retryCondition, e)) return Unit as T // throw exception
+                if (!isToRetry(retryCondition, e)) throw e
             }
         }
         throw exception()

@@ -17,6 +17,7 @@ import cs4k.prototype.broker.common.Utils
 import cs4k.prototype.broker.option1.ChannelCommandOperation.Listen
 import cs4k.prototype.broker.option1.ChannelCommandOperation.UnListen
 import org.postgresql.PGConnection
+import org.postgresql.util.PSQLException
 import org.slf4j.LoggerFactory
 import java.sql.Connection
 import java.sql.SQLException
@@ -113,27 +114,32 @@ class BrokerSQL(
      * @throws UnexpectedBrokerException If something unexpected happens.
      */
     private fun waitForNotification() {
-        retryExecutor.execute({ BrokerLostConnectionException() }, {
-            connectionPool.connection.use { conn ->
-                val pgConnection = conn.unwrap(PGConnection::class.java)
+        try {
+            retryExecutor.execute({ BrokerLostConnectionException() }, {
+                connectionPool.connection.use { conn ->
+                    val pgConnection = conn.unwrap(PGConnection::class.java)
 
-                while (!conn.isClosed) {
-                    val newNotifications = pgConnection.getNotifications(BLOCK_UNTIL_NEW_NOTIFICATIONS)
-                        ?: throw UnexpectedBrokerException()
-                    newNotifications.forEach { notification ->
-                        if (notification.name == channel) {
-                            logger.info(
-                                "new event '{}' backendPid '{}'",
-                                notification.parameter,
-                                pgConnection.backendPID
-                            )
-                            val event = BrokerSerializer.deserializeEventFromJson(notification.parameter)
-                            deliverToSubscribers(event)
+                    while (!conn.isClosed) {
+                        val newNotifications = pgConnection.getNotifications(BLOCK_UNTIL_NEW_NOTIFICATIONS)
+                            ?: throw UnexpectedBrokerException()
+                        newNotifications.forEach { notification ->
+                            if (notification.name == channel) {
+                                logger.info(
+                                    "new event '{}' backendPid '{}'",
+                                    notification.parameter,
+                                    pgConnection.backendPID
+                                )
+                                val event = BrokerSerializer.deserializeEventFromJson(notification.parameter)
+                                deliverToSubscribers(event)
+                            }
                         }
                     }
                 }
-            }
-        }, retryCondition)
+            }, retryCondition)
+        } catch (ex: PSQLException) {
+            if (!retryCondition(ex)) return
+            throw ex
+        }
     }
 
     /**
