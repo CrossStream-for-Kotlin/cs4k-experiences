@@ -18,7 +18,7 @@ class AssociatedSubscribersTests {
         val associatedSubscribers = AssociatedSubscribers()
         val topic = newTopic()
         val subscriberId = UUID.randomUUID()
-        val subscriber = Subscriber(subscriberId, { _ -> })
+        val subscriber = Subscriber(subscriberId) { _ -> }
 
         // Act
         associatedSubscribers.addToKey(topic, subscriber)
@@ -36,7 +36,7 @@ class AssociatedSubscribersTests {
         val associatedSubscribers = AssociatedSubscribers()
         val topic = newTopic()
         val subscriberId = UUID.randomUUID()
-        val subscriber = Subscriber(subscriberId, { _ -> })
+        val subscriber = Subscriber(subscriberId) { _ -> }
 
         // Act [1]
         associatedSubscribers.addToKey(topic, subscriber)
@@ -59,8 +59,8 @@ class AssociatedSubscribersTests {
         val topic = newTopic()
         val subscriberId1 = UUID.randomUUID()
         val subscriberId2 = UUID.randomUUID()
-        val subscriber1 = Subscriber(subscriberId1, { _ -> })
-        val subscriber2 = Subscriber(subscriberId2, { _ -> })
+        val subscriber1 = Subscriber(subscriberId1) { _ -> }
+        val subscriber2 = Subscriber(subscriberId2) { _ -> }
 
         // Act
         associatedSubscribers.addToKey(topic, subscriber1)
@@ -81,8 +81,8 @@ class AssociatedSubscribersTests {
         val topic = newTopic()
         val subscriberId1 = UUID.randomUUID()
         val subscriberId2 = UUID.randomUUID()
-        val subscriber1 = Subscriber(subscriberId1, { _ -> })
-        val subscriber2 = Subscriber(subscriberId2, { _ -> })
+        val subscriber1 = Subscriber(subscriberId1) { _ -> }
+        val subscriber2 = Subscriber(subscriberId2) { _ -> }
 
         // Act
         associatedSubscribers.addToKey(topic, subscriber1)
@@ -103,8 +103,8 @@ class AssociatedSubscribersTests {
         val topic = newTopic()
         val subscriberId1 = UUID.randomUUID()
         val subscriberId2 = UUID.randomUUID()
-        val subscriber1 = Subscriber(subscriberId1, { _ -> })
-        val subscriber2 = Subscriber(subscriberId2, { _ -> })
+        val subscriber1 = Subscriber(subscriberId1) { _ -> }
+        val subscriber2 = Subscriber(subscriberId2) { _ -> }
 
         associatedSubscribers.addToKey(topic, subscriber1)
         associatedSubscribers.addToKey(topic, subscriber2)
@@ -132,7 +132,7 @@ class AssociatedSubscribersTests {
 
         // Act
         repeat(NUMBER_OF_SUBSCRIBERS) {
-            val subscriber = Subscriber(UUID.randomUUID(), { _ -> })
+            val subscriber = Subscriber(UUID.randomUUID()) { _ -> }
             subscribers.add(subscriber)
             val thread = Thread { associatedSubscribers.addToKey(topic, subscriber) }
             threads.add(thread)
@@ -160,7 +160,7 @@ class AssociatedSubscribersTests {
         // Act
         topics.forEach { topic ->
             repeat(NUMBER_OF_SUBSCRIBERS) {
-                val subscriber = Subscriber(UUID.randomUUID(), { _ -> })
+                val subscriber = Subscriber(UUID.randomUUID()) { _ -> }
                 subscribers.add(Pair(topic, subscriber))
                 val thread = Thread { associatedSubscribers.addToKey(topic, subscriber) }
                 threads.add(thread)
@@ -188,7 +188,7 @@ class AssociatedSubscribersTests {
 
         // Act
         repeat(NUMBER_OF_SUBSCRIBERS) {
-            val subscriber = Subscriber(UUID.randomUUID(), { _ -> })
+            val subscriber = Subscriber(UUID.randomUUID()) { _ -> }
             subscribers.add(subscriber)
             val thread = Thread { associatedSubscribers.addToKey(topic, subscriber) }
             threads.add(thread)
@@ -228,7 +228,7 @@ class AssociatedSubscribersTests {
         // Act
         topics.forEach { topic ->
             repeat(NUMBER_OF_SUBSCRIBERS) {
-                val subscriber = Subscriber(UUID.randomUUID(), { _ -> })
+                val subscriber = Subscriber(UUID.randomUUID()) { _ -> }
                 subscribers.add(Pair(topic, subscriber))
                 val thread = Thread { associatedSubscribers.addToKey(topic, subscriber) }
                 threads.add(thread)
@@ -265,8 +265,8 @@ class AssociatedSubscribersTests {
         // Arrange
         val associatedSubscribers = AssociatedSubscribers()
         val topic = newTopic()
-        val subscriber1 = Subscriber(UUID.randomUUID(), { _ -> })
-        val subscriber2 = Subscriber(UUID.randomUUID(), { _ -> })
+        val subscriber1 = Subscriber(UUID.randomUUID()) { _ -> }
+        val subscriber2 = Subscriber(UUID.randomUUID()) { _ -> }
 
         var topicAdd = false
         var topicNotAdd = true
@@ -289,8 +289,8 @@ class AssociatedSubscribersTests {
         // Arrange
         val associatedSubscribers = AssociatedSubscribers()
         val topic = newTopic()
-        val subscriber1 = Subscriber(UUID.randomUUID(), { _ -> })
-        val subscriber2 = Subscriber(UUID.randomUUID(), { _ -> })
+        val subscriber1 = Subscriber(UUID.randomUUID()) { _ -> }
+        val subscriber2 = Subscriber(UUID.randomUUID()) { _ -> }
         associatedSubscribers.addToKey(topic, subscriber1)
         associatedSubscribers.addToKey(topic, subscriber2)
 
@@ -318,19 +318,25 @@ class AssociatedSubscribersTests {
 
         val associatedSubscribers = AssociatedSubscribers()
         val topic = newTopic()
-        val subscriber = Subscriber(UUID.randomUUID(), { _ -> }, initialLastEventID)
+        val subscriber = SubscriberWithEventTracking(UUID.randomUUID(), { _ -> }, initialLastEventID)
 
         // Act [1]
         associatedSubscribers.addToKey(topic, subscriber)
 
         // Assert [1]
-        assertEquals(initialLastEventID, associatedSubscribers.getAll(topic).first().lastEventId)
+        assertEquals(
+            initialLastEventID,
+            (associatedSubscribers.getAll(topic).first() as SubscriberWithEventTracking).lastEventIdReceived
+        )
 
         // Act [2]
         associatedSubscribers.updateLastEventIdListened(subscriber.id, topic, updatedLastEventID)
 
         // Assert [2]
-        assertEquals(updatedLastEventID, associatedSubscribers.getAll(topic).first().lastEventId)
+        assertEquals(
+            updatedLastEventID,
+            (associatedSubscribers.getAll(topic).first() as SubscriberWithEventTracking).lastEventIdReceived
+        )
     }
 
     private companion object {

@@ -13,9 +13,8 @@ import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
-import cs4k.prototype.broker.common.Subscriber
+import cs4k.prototype.broker.common.SubscriberWithEventTracking
 import cs4k.prototype.broker.option2.rabbitmq.ChannelPool
-import cs4k.prototype.broker.option2.rabbitmq.LatestTopicEvents
 import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.util.UUID
@@ -75,7 +74,7 @@ class BrokerRabbitDirectExchange : Broker {
         associatedSubscribers
             .getAll(event.topic)
             .forEach { subscriber ->
-                if (subscriber.lastEventId < event.id) {
+                if ((subscriber as SubscriberWithEventTracking).lastEventIdReceived < event.id) {
                     associatedSubscribers.updateLastEventIdListened(subscriber.id, event.topic, event.id)
                     subscriber.handler(event)
                 }
@@ -175,7 +174,7 @@ class BrokerRabbitDirectExchange : Broker {
     override fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
         if (topic == adminTopic) throw IllegalArgumentException("Cannot subscribe to admin topic.")
         if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
-        val subscriber = Subscriber(UUID.randomUUID(), handler)
+        val subscriber = SubscriberWithEventTracking(UUID.randomUUID(), handler)
         associatedSubscribers.addToKey(topic, subscriber)
         bindTopicToQueue(topic)
         logger.info("new subscriber topic '{}' in broker {}", topic, brokerNumber)
@@ -271,7 +270,7 @@ class BrokerRabbitDirectExchange : Broker {
      * @param topic The topic name.
      * @param subscriber The subscriber who unsubscribed.
      */
-    private fun unsubscribe(topic: String, subscriber: Subscriber) {
+    private fun unsubscribe(topic: String, subscriber: SubscriberWithEventTracking) {
         associatedSubscribers.removeIf(topic, { sub -> sub.id == subscriber.id })
         logger.info("unsubscribe topic '{}' id '{}", topic, subscriber.id)
     }

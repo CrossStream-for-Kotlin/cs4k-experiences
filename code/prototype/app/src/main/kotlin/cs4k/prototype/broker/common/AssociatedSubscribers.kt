@@ -5,13 +5,13 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 /**
- * Responsible for managing the association between topics and [Subscriber]s.
+ * Responsible for managing the association between topics and [BaseSubscriber]s.
  * It is thread-safe.
  */
 class AssociatedSubscribers {
 
     // Map that associates topics with lists of subscribers.
-    private val map = HashMap<String, List<Subscriber>>()
+    private val map = HashMap<String, List<BaseSubscriber>>()
 
     // Lock to ensure thread safety.
     private val lock = ReentrantLock()
@@ -41,13 +41,15 @@ class AssociatedSubscribers {
      *
      * @param subscriberId The identifier of the subscriber.
      * @param topic The topic to which the subscriber is subscribed.
-     * @param lastEventId The new last event identifier.
+     * @param lastEventIdReceived The new last event identifier.
      */
-    fun updateLastEventIdListened(subscriberId: UUID, topic: String, lastEventId: Long) {
+    fun updateLastEventIdListened(subscriberId: UUID, topic: String, lastEventIdReceived: Long) {
         lock.withLock {
             val subscribers = map[topic] ?: return
             val subscriber = subscribers.find { subscriber -> subscriber.id == subscriberId } ?: return
-            val updatedSubscriber = subscriber.copy(lastEventId = lastEventId)
+            val updatedSubscriber = (subscriber as SubscriberWithEventTracking).copy(
+                lastEventIdReceived = lastEventIdReceived
+            )
             map[topic] = subscribers - subscriber + updatedSubscriber
         }
     }
@@ -59,7 +61,7 @@ class AssociatedSubscribers {
      * @param subscriber The subscriber to add.
      * @param onTopicAdd Method to be executed only if the subscriber subscribes to a new topic.
      */
-    fun addToKey(topic: String, subscriber: Subscriber, onTopicAdd: (() -> Unit)? = null) {
+    fun addToKey(topic: String, subscriber: BaseSubscriber, onTopicAdd: (() -> Unit)? = null) {
         var newTopic = false
         lock.withLock {
             map.compute(topic) { _, subscribers ->
@@ -81,7 +83,7 @@ class AssociatedSubscribers {
      * @param predicate A predicate to determine which subscriber to remove.
      * @param onTopicRemove Method to be executed only if there are no more subscribers to the topic.
      */
-    fun removeIf(topic: String, predicate: (Subscriber) -> Boolean, onTopicRemove: (() -> Unit)? = null) {
+    fun removeIf(topic: String, predicate: (BaseSubscriber) -> Boolean, onTopicRemove: (() -> Unit)? = null) {
         var topicGone = false
         lock.withLock {
             map.computeIfPresent(topic) { _, subscribers ->

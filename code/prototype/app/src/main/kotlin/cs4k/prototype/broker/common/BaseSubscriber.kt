@@ -3,12 +3,12 @@ package cs4k.prototype.broker.common
 import java.util.UUID
 
 /**
- * Represents a subscriber to a topic.
+ * Public contract for the base representation of a subscriber.
  *
  * @property id The identifier of the subscriber.
  * @property handler The handler to call when an event is published to the topic.
  */
-data class Subscriber(
-    override val id: UUID,
-    override val handler: (event: Event) -> Unit
-) : BaseSubscriber
+interface BaseSubscriber {
+    val id: UUID
+    val handler: (event: Event) -> Unit
+}

@@ -12,9 +12,8 @@ import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.BrokerSerializer
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
-import cs4k.prototype.broker.common.Subscriber
+import cs4k.prototype.broker.common.SubscriberWithEventTracking
 import cs4k.prototype.broker.option2.rabbitmq.ChannelPool
-import cs4k.prototype.broker.option2.rabbitmq.LatestTopicEvents
 import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.util.*
@@ -77,7 +76,7 @@ class BrokerRabbitFanoutExchange : Broker {
         associatedSubscribers
             .getAll(event.topic)
             .forEach { subscriber ->
-                if (subscriber.lastEventId < event.id) {
+                if ((subscriber as SubscriberWithEventTracking).lastEventIdReceived < event.id) {
                     associatedSubscribers.updateLastEventIdListened(subscriber.id, event.topic, event.id)
                     subscriber.handler(event)
                 }
@@ -181,7 +180,7 @@ class BrokerRabbitFanoutExchange : Broker {
     override fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
         if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
 
-        val subscriber = Subscriber(UUID.randomUUID(), handler)
+        val subscriber = SubscriberWithEventTracking(UUID.randomUUID(), handler)
         associatedSubscribers.addToKey(topic, subscriber)
         logger.info("new subscriber topic '{}' id '{} in broker {}", topic, subscriber.id, brokerNumber)
         val lastEvent = getLastEvent(topic)
@@ -249,7 +248,7 @@ class BrokerRabbitFanoutExchange : Broker {
      * @param topic The topic name.
      * @param subscriber The subscriber who unsubscribed.
      */
-    private fun unsubscribe(topic: String, subscriber: Subscriber) {
+    private fun unsubscribe(topic: String, subscriber: SubscriberWithEventTracking) {
         associatedSubscribers.removeIf(topic, { sub -> sub.id == subscriber.id })
         logger.info("unsubscribe topic '{}' id '{}", topic, subscriber.id)
     }

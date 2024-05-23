@@ -9,11 +9,12 @@ import com.rabbitmq.client.DefaultConsumer
 import com.rabbitmq.client.Envelope
 import cs4k.prototype.broker.Broker
 import cs4k.prototype.broker.common.AssociatedSubscribers
+import cs4k.prototype.broker.common.BaseSubscriber
 import cs4k.prototype.broker.common.BrokerException.BrokerLostConnectionException
 import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
-import cs4k.prototype.broker.common.Subscriber
+import cs4k.prototype.broker.common.SubscriberWithEventTracking
 import cs4k.prototype.broker.option2.rabbitmq.ChannelPool
 import cs4k.prototype.broker.option2.rabbitmq.OffsetShareMessage
 import cs4k.prototype.broker.option2.rabbitmq.OffsetShareMessage.Companion.TYPE_REQUEST
@@ -107,7 +108,7 @@ class BrokerRabbitStreamsFiltering(
             associatedSubscribers
                 .getAll(topic)
                 .forEach { subscriber ->
-                    if (subscriber.lastEventId < eventToNotify.id) {
+                    if ((subscriber as SubscriberWithEventTracking).lastEventIdReceived < eventToNotify.id) {
                         associatedSubscribers.updateLastEventIdListened(subscriber.id, topic, eventToNotify.id)
                         subscriber.handler(eventToNotify)
                     }
@@ -236,11 +237,11 @@ class BrokerRabbitStreamsFiltering(
 
     override fun subscribe(topic: String, handler: (event: Event) -> Unit): () -> Unit {
         if (isShutdown.get()) throw BrokerTurnOffException("Cannot invoke ${::subscribe.name}.")
-        val subscriber = Subscriber(UUID.randomUUID(), handler)
+        val subscriber = SubscriberWithEventTracking(UUID.randomUUID(), handler)
         associatedSubscribers.addToKey(topic, subscriber) { listen(topic) }
         logger.info("new subscriber topic '{}' id '{}", topic, subscriber.id)
         getLastEvent(topic)?.let { event ->
-            if (subscriber.lastEventId < event.id) {
+            if (subscriber.lastEventIdReceived < event.id) {
                 associatedSubscribers.updateLastEventIdListened(subscriber.id, topic, event.id)
                 handler(event)
             }
@@ -254,11 +255,11 @@ class BrokerRabbitStreamsFiltering(
      * @param topic The topic name.
      * @param subscriber The subscriber who unsubscribed.
      */
-    private fun unsubscribe(topic: String, subscriber: Subscriber) {
+    private fun unsubscribe(topic: String, subscriber: SubscriberWithEventTracking) {
         val topicLock = consumedTopics.getLock(topic)
         associatedSubscribers.removeIf(
             topic,
-            { sub: Subscriber -> sub.id.toString() == subscriber.id.toString() },
+            { sub: BaseSubscriber -> sub.id.toString() == subscriber.id.toString() },
             {
                 if (consumedTopics.markForAnalysis(topic)) {
                     cleanExecutor.schedule({
