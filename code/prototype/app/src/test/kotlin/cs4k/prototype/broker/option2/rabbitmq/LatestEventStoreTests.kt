@@ -40,7 +40,7 @@ class LatestEventStoreTests {
     }
 
     @Test
-    fun `several sets with the same topic should create events with sequencial ids`() {
+    fun `several sets with the same topic should create events with sequential ids`() {
         // Assemble
         val topic = newRandomTopic()
         val store = LatestEventStore()

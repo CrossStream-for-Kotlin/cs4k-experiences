@@ -90,7 +90,7 @@ class MessageQueueTests {
     }
 
     @Test
-    fun `messageQueue sucessful`() {
+    fun `messageQueue successful`() {
         runBlocking {
             val messageQueue = MessageQueue<Int>(1)
             messageQueue.enqueue(5)
@@ -99,7 +99,7 @@ class MessageQueueTests {
     }
 
     @Test
-    fun `messageQueue sucessful with multiple messages FIFO`() {
+    fun `messageQueue successful with multiple messages FIFO`() {
         runBlocking {
             val messageQueue = MessageQueue<Int>(3)
             messageQueue.enqueue(5)
@@ -112,7 +112,7 @@ class MessageQueueTests {
     }
 
     @Test
-    fun `messageQueue sucessful with multiple coroutines`() {
+    fun `messageQueue successful with multiple coroutines`() {
         runBlocking {
             val messageQueue = MessageQueue<Int>(10)
             val coroutines = List(10) {
@@ -128,7 +128,7 @@ class MessageQueueTests {
     }
 
     @Test
-    fun `messageQueue sucessful with multiple coroutines enqueuing and then dequeuing`() {
+    fun `messageQueue successful with multiple coroutines enqueuing and then dequeuing`() {
         runBlocking {
             val messageQueueSize = 10
             val values = 50
@@ -151,7 +151,7 @@ class MessageQueueTests {
     }
 
     @Test
-    fun `messageQueue sucessful with multiple coroutines simultaneously enqueuing and dequeuing`() {
+    fun `messageQueue successful with multiple coroutines simultaneously enqueuing and dequeuing`() {
         runBlocking {
             val messageQueueSize = 1
             val values = 5000
