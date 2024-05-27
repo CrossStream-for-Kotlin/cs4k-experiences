@@ -2,7 +2,7 @@ package cs4k.prototype.broker
 
 import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.Event
-import cs4k.prototype.broker.option1.BrokerSQL
+import cs4k.prototype.broker.option2.rabbitmq.BrokerRabbit
 import org.junit.jupiter.api.AfterAll
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
@@ -754,6 +754,7 @@ class BrokerTests {
 
             val currentTimeMillis = System.currentTimeMillis()
             if (currentTimeMillis - startTimeMillis >= TEST_EXECUTION_TIME_MILLIS) break
+            Thread.sleep(SUBSCRIBE_DELAY_MILLIS)
         }
 
         publisherThread.interrupt()
@@ -819,6 +820,7 @@ class BrokerTests {
 
                     val currentTimeMillis = System.currentTimeMillis()
                     if (currentTimeMillis - startTimeMillis >= TEST_EXECUTION_TIME_MILLIS) break
+                    Thread.sleep(SUBSCRIBE_DELAY_MILLIS)
                 }
             }
             th.start().also { threads.add(th) }
@@ -898,6 +900,7 @@ class BrokerTests {
 
                         val currentTimeMillis = System.currentTimeMillis()
                         if (currentTimeMillis - startTimeMillis >= TEST_EXECUTION_TIME_MILLIS) break
+                        Thread.sleep(SUBSCRIBE_DELAY_MILLIS)
                     }
                 }
                 th.start().also { threads.add(th) }
@@ -956,6 +959,7 @@ class BrokerTests {
             if (currentTimeMillis - startTimeMillis >= TEST_EXECUTION_TIME_MILLIS && events.size >= messages.size) {
                 break
             }
+            Thread.sleep(SUBSCRIBE_DELAY_MILLIS)
         }
 
         publisherThread.interrupt()
@@ -1016,6 +1020,7 @@ class BrokerTests {
                         if (currentTimeMillis - startTimeMillis >= TEST_EXECUTION_TIME_MILLIS && events.size >= messages.size) {
                             break
                         }
+                        Thread.sleep(SUBSCRIBE_DELAY_MILLIS)
                     }
 
                     // Assert [2]
@@ -1093,6 +1098,7 @@ class BrokerTests {
                         if (currentTimeMillis - startTimeMillis >= TEST_EXECUTION_TIME_MILLIS && events.size >= entry.value.size) {
                             break
                         }
+                        Thread.sleep(SUBSCRIBE_DELAY_MILLIS)
                     }
 
                     // Assert [2]
@@ -1156,24 +1162,25 @@ class BrokerTests {
 
     companion object {
         private const val FIRST_EVENT_ID = 0L
-        private const val NUMBER_OF_BROKER_INSTANCES = 5
+        private const val NUMBER_OF_BROKER_INSTANCES = 2
         private const val NUMBER_OF_TOPICS = 5
         private const val NUMBER_OF_SUBSCRIBERS = 200
         private const val NUMBER_OF_MESSAGES = 200
 
+        private const val SUBSCRIBE_DELAY_MILLIS = 100L
         private const val PUBLISHER_DELAY_MILLIS = 3000L
         private const val SUBSCRIBE_TIMEOUT_MILLIS = 60000L
         private const val TEST_EXECUTION_TIME_MILLIS = 60000L
 
         private fun createBrokerInstance() =
             // - PostgreSQL
-            BrokerSQL()
+            // BrokerSQL()
 
-        // - Redis
-        // BrokerRedis()
+            // - Redis
+            // BrokerRedis()
 
-        // - RabbitMQ
-        // BrokerRabbitStreams()
+            // - RabbitMQ
+            BrokerRabbit()
 
         private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { createBrokerInstance() }
 

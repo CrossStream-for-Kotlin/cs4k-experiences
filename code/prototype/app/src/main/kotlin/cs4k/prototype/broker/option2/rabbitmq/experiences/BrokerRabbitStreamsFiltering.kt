@@ -16,14 +16,8 @@ import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.common.RetryExecutor
 import cs4k.prototype.broker.common.SubscriberWithEventTracking
 import cs4k.prototype.broker.option2.rabbitmq.ChannelPool
-import cs4k.prototype.broker.option2.rabbitmq.OffsetShareMessage
-import cs4k.prototype.broker.option2.rabbitmq.OffsetShareMessage.Companion.TYPE_REQUEST
-import cs4k.prototype.broker.option2.rabbitmq.OffsetShareMessage.Companion.TYPE_RESPONSE
-import cs4k.prototype.broker.option2.rabbitmq.OffsetShareRequest
-import cs4k.prototype.broker.option2.rabbitmq.OffsetShareResponse
-import cs4k.prototype.broker.option2.rabbitmq.toOffsetShareMessage
-import cs4k.prototype.broker.option2.rabbitmq.toOffsetShareRequest
-import cs4k.prototype.broker.option2.rabbitmq.toOffsetShareResponse
+import cs4k.prototype.broker.option2.rabbitmq.experiences.OffsetShareMessage.OffsetShareRequestType.REQUEST
+import cs4k.prototype.broker.option2.rabbitmq.experiences.OffsetShareMessage.OffsetShareRequestType.RESPONSE
 import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.util.Collections
@@ -78,8 +72,8 @@ class BrokerRabbitStreamsFiltering(
      */
     private fun fetchOffset(topic: String) {
         val publishingChannel = publishingChannelPool.getChannel()
-        val request = OffsetShareMessage.createRequest(brokerId, topic)
-        publishingChannel.basicPublish(offsetExchange, "", null, request.toString().toByteArray())
+        val request = OffsetShareMessage.serialize(OffsetShareRequest(brokerId, topic).toMessage()).toByteArray()
+        publishingChannel.basicPublish(offsetExchange, "", null, request)
         publishingChannelPool.stopUsingChannel(publishingChannel)
     }
 
@@ -144,19 +138,21 @@ class BrokerRabbitStreamsFiltering(
         private fun handleRequest(request: OffsetShareRequest) {
             val topic = request.topic
             val offset = consumedTopics.getOffsetNoWait(topic)
-            if (request.sender != brokerId && offset != null) {
+            if (request.senderQueue != brokerId && offset != null) {
                 val publishChannel = publishingChannelPool.getChannel()
                 val accessInfo = consumedTopics.getLatestMessageAccessInfo(topic)
-                val response = OffsetShareMessage.createResponse(
-                    accessInfo?.offset ?: 0L,
-                    accessInfo?.lastEventId ?: 0L,
-                    topic
-                )
+                val response = OffsetShareMessage.serialize(
+                    OffsetShareResponse(
+                        accessInfo?.offset ?: 0L,
+                        accessInfo?.lastEventId ?: 0L,
+                        topic
+                    ).toMessage()
+                ).toByteArray()
                 publishChannel.basicPublish(
                     "",
-                    request.sender,
+                    request.senderQueue,
                     null,
-                    response.toString().toByteArray()
+                    response
                 )
                 consumingChannelPool.stopUsingChannel(publishChannel)
             }
@@ -175,10 +171,10 @@ class BrokerRabbitStreamsFiltering(
         ) {
             requireNotNull(envelope)
             requireNotNull(body)
-            val message = String(body).toOffsetShareMessage()
+            val message = OffsetShareMessage.deserialize(String(body))
             when (message.type) {
-                TYPE_REQUEST -> handleRequest(message.message.toOffsetShareRequest())
-                TYPE_RESPONSE -> handleResponse(message.message.toOffsetShareResponse())
+                REQUEST -> handleRequest(message.toRequest())
+                RESPONSE -> handleResponse(message.toResponse())
             }
             val deliveryTag = envelope.deliveryTag
             channel.basicAck(deliveryTag, false)

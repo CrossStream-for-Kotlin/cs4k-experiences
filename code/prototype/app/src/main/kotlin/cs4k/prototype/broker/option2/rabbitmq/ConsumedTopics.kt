@@ -79,7 +79,7 @@ class ConsumedTopics {
      * Full populates the map with information regarding certain topics.
      * @param events New information about topics.
      */
-    fun fullUpdate(events: Array<ConsumeInfo>) = lock.withLock {
+    fun fullUpdate(events: List<ConsumeInfo>) = lock.withLock {
         events.forEach { eventEntry ->
             consumeInfoMap[eventEntry.lastEvent.topic] =
                 ConsumeInfo(
