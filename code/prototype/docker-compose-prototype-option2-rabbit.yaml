@@ -48,6 +48,19 @@ services:
       dockerfile: tests/Dockerfile-ubuntu
     tty: true
 
+
+    # Rabbit cluster
+  rabbit-mq:
+    container_name: rabbit-mq
+    image: rabbitmq:alpine
+    hostname: rabbit-mq1
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: "user"
+      RABBITMQ_DEFAULT_PASS: "password"
+
   # Rabbit cluster
   rabbit-mq1:
     container_name: rabbit-mq1
