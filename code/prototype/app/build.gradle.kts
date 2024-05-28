@@ -103,7 +103,7 @@ task<Exec>("redisDown") {
 /**
  * RabbitMQ related tasks
  */
-/* task<Exec>("rabbitUp") {
+task<Exec>("rabbitUp") {
     commandLine(
         "docker-compose",
         "-f",
@@ -113,7 +113,7 @@ task<Exec>("redisDown") {
         "--build",
         "rabbit-mq"
     )
-} */
+}
 
 task<Exec>("rabbitClusterUp") {
     val command =

@@ -20,15 +20,31 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.milliseconds
 
 class BrokerRabbit(
+    private val clusterNodes: List<RabbitNode>,
+    private val username: String = "user",
+    private val password: String = "password",
     private val subscribeDelayInMillis: Long = DEFAULT_SUBSCRIBE_DELAY_MILLIS
 ) : Broker {
+
+    constructor(
+        node: RabbitNode,
+        username: String = "user",
+        password: String = "password",
+        subscribeDelayInMillis: Long = DEFAULT_SUBSCRIBE_DELAY_MILLIS
+    )
+            : this(listOf(node), username, password, subscribeDelayInMillis)
 
     // Association between topics and subscribers lists.
     private val associatedSubscribers = AssociatedSubscribers()
 
+    // Factory where connections are created.
+    private val factory = createFactory()
+
     // Channel pool
-    private val consumingChannelPool = ChannelPool(createConnection())
-    private val publishingChannelPool = ChannelPool(createConnection())
+    private val consumingChannelPool =
+        ChannelPool(factory.newConnection(clusterNodes.map { Address(it.host, it.port) }))
+    private val publishingChannelPool =
+        ChannelPool(factory.newConnection(clusterNodes.map { Address(it.host, it.port) }))
 
     // Name of stream used to publish messages to.
     private val streamName = "cs4k-notifications"
@@ -291,44 +307,12 @@ class BrokerRabbit(
 
         /**
          * Creates the creator of connections for accessing RabbitMQ broker.
-         * @param host The host of the RabbitMQ server
-         * @param port The port number to access the RabbitMQ server.
          */
-        private fun createFactory(host: String = "localhost", port: Int = 5672): ConnectionFactory {
+        private fun createFactory(): ConnectionFactory {
             val factory = ConnectionFactory()
             factory.username = "user"
             factory.password = "password"
-            factory.host = host
-            factory.port = port
             return factory
-        }
-
-        // Addresses of all nodes inside the cluster.
-        private val clusterAddresses = listOf(
-            "localhost:5672",
-            "localhost:5673",
-            "localhost:5674"
-        ).map { address ->
-            val hostAndPort = address.split(":")
-            Address(hostAndPort.dropLast(1).joinToString(":"), hostAndPort.last().toInt())
-        }
-
-        /**
-         * Creating a connection to a single RabbitMQ instance.
-         */
-        private fun createSingleConnection() = createFactory().newConnection()
-
-        /**
-         * Creating a connection to a RabbitMQ cluster.
-         */
-        private fun createClusterConnection() = createFactory().newConnection(clusterAddresses)
-
-        /**
-         * Creating a connection.
-         */
-        private fun createConnection(): Connection {
-            // return createSingleConnection()
-            return createClusterConnection()
         }
     }
 }

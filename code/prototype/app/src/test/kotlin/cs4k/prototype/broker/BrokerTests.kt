@@ -3,7 +3,9 @@ package cs4k.prototype.broker
 import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.option2.rabbitmq.BrokerRabbit
+import cs4k.prototype.broker.option2.rabbitmq.RabbitNode
 import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.TestInstance
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -1162,7 +1164,7 @@ class BrokerTests {
 
     companion object {
         private const val FIRST_EVENT_ID = 0L
-        private const val NUMBER_OF_BROKER_INSTANCES = 2
+        private const val NUMBER_OF_BROKER_INSTANCES = 5
         private const val NUMBER_OF_TOPICS = 5
         private const val NUMBER_OF_SUBSCRIBERS = 200
         private const val NUMBER_OF_MESSAGES = 200
@@ -1173,18 +1175,23 @@ class BrokerTests {
         private const val TEST_EXECUTION_TIME_MILLIS = 60000L
 
         private fun createBrokerInstance() =
-            // - PostgreSQL
-            // BrokerSQL()
+        // - PostgreSQL
+        // BrokerSQL()
 
-            // - Redis
-            // BrokerRedis()
+        // - Redis
+        // BrokerRedis()
 
-            // - RabbitMQ
-            BrokerRabbit()
+        // - RabbitMQ
+        BrokerRabbit(listOf(
+            RabbitNode("localhost", 5672),
+            RabbitNode("localhost", 5673),
+            RabbitNode("localhost", 5674)
+        ))
 
         private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { createBrokerInstance() }
 
         private fun getRandomBrokerInstance() = brokerInstances.random()
+        private fun getRandomBrokerInstance(brokerInstances: List<Broker>) = brokerInstances.random()
 
         private fun generateRandom() = abs(Random.nextLong())
 
