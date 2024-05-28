@@ -49,7 +49,7 @@ services:
     tty: true
 
 
-    # Rabbit cluster
+    # Rabbit single node
   rabbit-mq:
     container_name: rabbit-mq
     image: rabbitmq:alpine
