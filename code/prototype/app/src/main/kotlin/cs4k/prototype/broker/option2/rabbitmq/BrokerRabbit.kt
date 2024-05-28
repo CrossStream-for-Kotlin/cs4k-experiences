@@ -11,7 +11,6 @@ import cs4k.prototype.broker.Broker
 import cs4k.prototype.broker.common.AssociatedSubscribers
 import cs4k.prototype.broker.common.BrokerException.BrokerTurnOffException
 import cs4k.prototype.broker.common.Event
-import cs4k.prototype.broker.common.RetryExecutor
 import cs4k.prototype.broker.common.Subscriber
 import cs4k.prototype.broker.option2.rabbitmq.HistoryShareMessage.HistoryShareMessageType.REQUEST
 import cs4k.prototype.broker.option2.rabbitmq.HistoryShareMessage.HistoryShareMessageType.RESPONSE
@@ -26,9 +25,6 @@ class BrokerRabbit(
 
     // Association between topics and subscribers lists.
     private val associatedSubscribers = AssociatedSubscribers()
-
-    // Retry executor.
-    private val retryExecutor = RetryExecutor()
 
     // Channel pool
     private val consumingChannelPool = ChannelPool(createConnection())
@@ -49,8 +45,17 @@ class BrokerRabbit(
     // Flag that indicates if broker is gracefully shutting down.
     private val isShutdown = AtomicBoolean(false)
 
+    /**
+     * Consumer used for processing messages coming from stream.
+     * @param channel Channel where messages are coming from.
+     */
     private inner class BrokerConsumer(channel: Channel) : DefaultConsumer(channel) {
 
+        /**
+         * Converting the received message into an event before notifying the subscribers.
+         * @param message The message received from the queue.
+         * @param offset The offset of the message.
+         */
         private fun processMessage(message: Message, offset: Long) {
             val event = consumedTopics.createAndSetLatestEventAndOffset(
                 message.topic,
@@ -80,13 +85,18 @@ class BrokerRabbit(
     }
 
     /**
-     * Consumer used to receive requests for offsets and IDs and sends them out as responses.
+     * Consumer used to receive requests for offsets and events and sends them out as responses.
      * @param channel Channel where requests come from.
      */
     private inner class HistoryShareHandler(channel: Channel) : DefaultConsumer(channel) {
 
+        // If the broker already got information from a broker through history share.
         private val gotInfoFromPeer = AtomicBoolean(false)
 
+        /**
+         * Processes the request and sends out a response including the stored offsets and events.
+         * @param request The request received.
+         */
         private fun handleRequest(request: HistoryShareRequest) {
             logger.info("received request from {}", request.senderQueue)
             val publishChannel = publishingChannelPool.getChannel()
@@ -96,11 +106,15 @@ class BrokerRabbit(
                 "",
                 request.senderQueue,
                 null,
-                response.toString().toByteArray()
+                HistoryShareMessage.serialize(response).toByteArray()
             )
             publishingChannelPool.stopUsingChannel(publishChannel)
         }
 
+        /**
+         * Processes the response and stores all the information given.
+         * @param response The response received.
+         */
         private fun handleResponse(response: HistoryShareResponse) {
             if (gotInfoFromPeer.compareAndSet(false, true)) {
                 logger.info("received response, storing...")
@@ -135,6 +149,9 @@ class BrokerRabbit(
         listen()
     }
 
+    /**
+     * Creating the common stream where publishes are sent.
+     */
     private fun createStream() {
         val channel = publishingChannelPool.getChannel()
         channel.queueDeclare(
@@ -150,8 +167,13 @@ class BrokerRabbit(
         publishingChannelPool.stopUsingChannel(channel)
     }
 
+    /**
+     * Consuming from the common stream.
+     * It starts from the next message published after the consumption. However, if there were brokers consuming
+     * from the stream, and they send the offset corresponding to the latest event received, it starts from there.
+     */
     private fun listen() {
-        val offset = consumedTopics.getMaximumOffset(subscribeDelayInMillis.milliseconds) ?: "last"
+        val offset = consumedTopics.getMaximumOffset(subscribeDelayInMillis.milliseconds) ?: "next"
         val channel = consumingChannelPool.getChannel()
         channel.basicQos(DEFAULT_PREFETCH_VALUE)
         channel.basicConsume(
@@ -164,6 +186,9 @@ class BrokerRabbit(
         )
     }
 
+    /**
+     * Creating the exchange used to send history requests to.
+     */
     private fun createHistoryExchange() {
         val channel = publishingChannelPool.getChannel()
         channel.exchangeDeclare(
@@ -173,6 +198,9 @@ class BrokerRabbit(
         publishingChannelPool.stopUsingChannel(channel)
     }
 
+    /**
+     * Creating the broker's control queue and starts consuming messages from it to start handling history requests.
+     */
     private fun createControlQueue() {
         val channel = consumingChannelPool.getChannel()
         channel.queueDeclare(
@@ -180,18 +208,23 @@ class BrokerRabbit(
             true,
             false,
             false,
-            null
+            mapOf(
+                "x-queue-type" to "quorum"
+            )
         )
         channel.basicConsume(brokerId, HistoryShareHandler(channel))
     }
 
     /**
-     * Requesting stored info surrounding brokers to consume from common stream.
+     * Requesting history from neighbouring brokers.
      */
     private fun fetchStoredInfoFromPeers() {
         val publishingChannel = publishingChannelPool.getChannel()
         val request = HistoryShareRequest(brokerId).toHistoryShareMessage()
-        publishingChannel.basicPublish(historyExchange, "", null, request.toString().toByteArray())
+        publishingChannel.basicPublish(
+            historyExchange, "", null,
+            HistoryShareMessage.serialize(request).toByteArray()
+        )
         logger.info("started up - sending request to obtain info")
         publishingChannelPool.stopUsingChannel(publishingChannel)
     }
@@ -208,8 +241,17 @@ class BrokerRabbit(
         return { unsubscribe(topic, subscriber) }
     }
 
+    /**
+     * Obtain the last event of the topic stored within the broker.
+     * @param topic The topic of the desired event.
+     */
     private fun getLastEvent(topic: String) = consumedTopics.getLatestEvent(topic)
 
+    /**
+     * Canceling a previously-made subscription.
+     * @param topic The topic previously subscribed to.
+     * @param subscriber The subscriber wanting ot cancel the subscription.
+     */
     private fun unsubscribe(topic: String, subscriber: Subscriber) {
         associatedSubscribers.removeIf(topic, { it.id.toString() == subscriber.id.toString() })
         logger.info("unsubscribe topic '{}' id '{}", topic, subscriber.id)
@@ -237,8 +279,14 @@ class BrokerRabbit(
         // Logger instance for logging Broker class information.
         private val logger = LoggerFactory.getLogger(BrokerRabbit::class.java)
 
+        // Default value for QoS or prefetch for un-acked messages, required for stream consumption.
         private const val DEFAULT_PREFETCH_VALUE = 100
+
+        // Default value for subscription delay, used as a timeout waiting for receiving history from another
+        // broker.
         private const val DEFAULT_SUBSCRIBE_DELAY_MILLIS = 250L
+
+        // Default value for the common stream size, in bytes.
         private const val DEFAULT_STREAM_SIZE = 8_000_000
 
         /**
@@ -265,10 +313,19 @@ class BrokerRabbit(
             Address(hostAndPort.dropLast(1).joinToString(":"), hostAndPort.last().toInt())
         }
 
+        /**
+         * Creating a connection to a single RabbitMQ instance.
+         */
         private fun createSingleConnection() = createFactory().newConnection()
 
+        /**
+         * Creating a connection to a RabbitMQ cluster.
+         */
         private fun createClusterConnection() = createFactory().newConnection(clusterAddresses)
 
+        /**
+         * Creating a connection.
+         */
         private fun createConnection(): Connection {
             // return createSingleConnection()
             return createClusterConnection()
