@@ -73,7 +73,6 @@ class RunAllBrokerTests {
         `cannot invoke method subscribe after shutdown`(constructor)
     }
 
-
     fun `new subscriber in 1 topic should receive the last message`(brokerInstances: List<Broker>) {
         // Arrange
         val topic = newRandomTopic()
@@ -107,7 +106,6 @@ class RunAllBrokerTests {
         // Clean Up
         unsubscribe()
     }
-
 
     fun `new subscribers in 1 topic should receive the same last message even with several broker instances involved`(
         brokerInstances: List<Broker>
@@ -149,7 +147,6 @@ class RunAllBrokerTests {
         unsubscribes.forEach { unsubscribe -> unsubscribe() }
     }
 
-
     fun `new subscriber in 1 finished topic should receive the last message`(brokerInstances: List<Broker>) {
         // Arrange
         val topic = newRandomTopic()
@@ -183,7 +180,6 @@ class RunAllBrokerTests {
         // Clean Up
         unsubscribe()
     }
-
 
     fun `new subscribers in 1 finished topic should receive the same last message even with several broker instances involved`(
         brokerInstances: List<Broker>
@@ -225,7 +221,6 @@ class RunAllBrokerTests {
         unsubscribes.forEach { unsubscribe -> unsubscribe() }
     }
 
-
     fun `1 subscriber in 1 topic waiting for 1 message`(brokerInstances: List<Broker>) {
         // Arrange
         val topic = newRandomTopic()
@@ -258,7 +253,6 @@ class RunAllBrokerTests {
         // Clean Up
         unsubscribe()
     }
-
 
     fun `n subscribers in 1 topic waiting for 1 message with several broker instances involved`(brokerInstances: List<Broker>) {
         // Arrange
@@ -296,7 +290,6 @@ class RunAllBrokerTests {
         // Clean Up
         unsubscribes.forEach { unsubscribe -> unsubscribe() }
     }
-
 
     fun `1 subscriber in 1 topic receiving n messages with several broker instances involved`(brokerInstances: List<Broker>) {
         // Arrange
@@ -337,7 +330,6 @@ class RunAllBrokerTests {
         // Clean Up
         unsubscribe()
     }
-
 
     fun `n subscribers in 1 topic receiving n messages with several broker instances involved`(brokerInstances: List<Broker>) {
         // Arrange
@@ -385,7 +377,6 @@ class RunAllBrokerTests {
         // Clean Up
         unsubscribes.forEach { unsubscribe -> unsubscribe() }
     }
-
 
     fun `n subscribers in n topics receiving n messages with several broker instances involved`(brokerInstances: List<Broker>) {
         // Arrange

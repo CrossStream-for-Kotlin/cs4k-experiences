@@ -3,7 +3,6 @@ package cs4k.prototype.broker.option2.rabbitmq
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.Address
 import com.rabbitmq.client.Channel
-import com.rabbitmq.client.Connection
 import com.rabbitmq.client.ConnectionFactory
 import com.rabbitmq.client.DefaultConsumer
 import com.rabbitmq.client.Envelope
@@ -31,8 +30,8 @@ class BrokerRabbit(
         username: String = "user",
         password: String = "password",
         subscribeDelayInMillis: Long = DEFAULT_SUBSCRIBE_DELAY_MILLIS
-    )
-            : this(listOf(node), username, password, subscribeDelayInMillis)
+    ) :
+        this(listOf(node), username, password, subscribeDelayInMillis)
 
     // Association between topics and subscribers lists.
     private val associatedSubscribers = AssociatedSubscribers()
@@ -238,7 +237,9 @@ class BrokerRabbit(
         val publishingChannel = publishingChannelPool.getChannel()
         val request = HistoryShareRequest(brokerId).toHistoryShareMessage()
         publishingChannel.basicPublish(
-            historyExchange, "", null,
+            historyExchange,
+            "",
+            null,
             HistoryShareMessage.serialize(request).toByteArray()
         )
         logger.info("started up - sending request to obtain info")

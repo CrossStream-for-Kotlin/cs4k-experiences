@@ -5,7 +5,6 @@ import cs4k.prototype.broker.common.Event
 import cs4k.prototype.broker.option2.rabbitmq.BrokerRabbit
 import cs4k.prototype.broker.option2.rabbitmq.RabbitNode
 import org.junit.jupiter.api.AfterAll
-import org.junit.jupiter.api.TestInstance
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -1175,18 +1174,20 @@ class BrokerTests {
         private const val TEST_EXECUTION_TIME_MILLIS = 60000L
 
         private fun createBrokerInstance() =
-        // - PostgreSQL
-        // BrokerSQL()
+            // - PostgreSQL
+            // BrokerSQL()
 
-        // - Redis
-        // BrokerRedis()
+            // - Redis
+            // BrokerRedis()
 
-        // - RabbitMQ
-        BrokerRabbit(listOf(
-            RabbitNode("localhost", 5672),
-            RabbitNode("localhost", 5673),
-            RabbitNode("localhost", 5674)
-        ))
+            // - RabbitMQ
+            BrokerRabbit(
+                listOf(
+                    RabbitNode("localhost", 5672),
+                    RabbitNode("localhost", 5673),
+                    RabbitNode("localhost", 5674)
+                )
+            )
 
         private val brokerInstances = List(NUMBER_OF_BROKER_INSTANCES) { createBrokerInstance() }
 
