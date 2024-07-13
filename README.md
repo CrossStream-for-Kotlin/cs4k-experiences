@@ -1,2 +1,2 @@
 # cs4k-experiences
-Library for the use of Server-sent events and WebSockets in multi-node backends systems
+Experiences related to the development of the ***Library to support the use of Server-sent events and WebSockets on multi-node backend systems***
